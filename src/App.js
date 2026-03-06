@@ -14,7 +14,6 @@ const CHARACTERS = [
   { name: 'C.ヴァイパー', id: 'crimson-viper' }, { name: 'アレックス', id: 'alex' }, { name: 'イングリット', id: 'ingrid' }
 ].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
 
-// コマンドボタンに OD, SA1-3 を追加
 const COMMANDS = ['5', '2', '6', '4', '8', '236', '214', '623', '41236', '63214', 'P', 'K', 'LP', 'MP', 'HP', 'LK', 'MK', 'HK', 'DR', 'PC', 'TC', '前ステ', 'OD', 'SA1', 'SA2', 'SA3'];
 const HIT_TYPES = ['通常', 'パニカン', 'カウンター', '持続', '空中'];
 const LOCATIONS = ['中央', '画面端', 'どこでも'];
@@ -77,9 +76,22 @@ export default function App() {
   const insertCmd = (cmd) => {
     if (!focusField) return;
     const { type, index, field } = focusField;
+    
     const formatCmd = (current) => {
       const trimmed = current ? current.trim() : "";
-      return trimmed === "" ? cmd : `${trimmed} > ${cmd}`;
+      if (trimmed === "") return cmd;
+
+      // 直前の文字を取得
+      const lastPart = trimmed.split(' ').pop();
+      const isNumber = /^[0-9]+$/.test(lastPart);
+      const isOD = lastPart === "OD";
+
+      // 直前が数字またはODならスペースのみ、それ以外なら > を入れる
+      if (isNumber || isOD) {
+        return `${trimmed}${cmd}`;
+      } else {
+        return `${trimmed} > ${cmd}`;
+      }
     };
 
     if (type === 'combo') {
@@ -93,6 +105,7 @@ export default function App() {
     }
   };
 
+  // （以下、前回と同じUIコンポーネントのため中略。スタイル等も含めすべて維持しています）
   const copyAIPrompt = () => {
     const prompt = `あなたはSF6の高度なコーチです。自キャラ:${myChar.name}、敵キャラ:${selectedChar.name}。
 【最優先：敵キャラ対策の抽出】
@@ -215,6 +228,7 @@ export default function App() {
   );
 }
 
+// スタイルは前回と同様のため省略なしでそのままお使いいただけます
 const containerStyle = { display:'flex', flexDirection:'column', height:'100vh', background:'#050505', color:'#fff', overflow:'hidden' };
 const headerStyle = { display:'flex', justifyContent:'space-between', padding:'10px', background:'#111', alignItems:'center' };
 const nameInputStyle = { width:'60px', background:'#000', color:'#fff', border:'1px solid #444', fontSize:'10px', borderRadius:'4px', padding:'2px 5px' };
