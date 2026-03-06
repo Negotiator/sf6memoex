@@ -106,4 +106,117 @@ export default function App() {
             onChange={(e) => { setPlayerName(e.target.value); updateMyData('playerName', e.target.value); }} 
           />
           <select value={myChar.id} onChange={(e) => {
-            const char = CHARACTERS.find(c => c.id === e.
+            const char = CHARACTERS.find(c => c.id === e.target.value);
+            setMyChar(char); updateMyData('myCharId', char.id);
+          }} style={selectStyle}>
+            {CHARACTERS.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+        <button onClick={copyAIPrompt} style={aiBtnStyle}>✨ AI指示</button>
+      </header>
+
+      <div style={charNavStyle}>
+        {CHARACTERS.map(c => (
+          <div key={c.id} onClick={() => setSelectedChar(c)} style={{...charItemStyle, opacity: selectedChar.id === c.id ? 1 : 0.4}}>
+            <div style={{...iconBox, border: selectedChar.id === c.id ? '2px solid #0ff' : '1px solid #444'}}>
+              <img src={`/${c.id}.png`} alt="" style={{width:'100%', height:'100%', objectFit:'cover'}} onError={(e) => { e.target.style.display='none'; }} />
+            </div>
+            <div style={{fontSize:'8px', color: selectedChar.id === c.id ? '#0ff' : '#888'}}>{c.name}</div>
+          </div>
+        ))}
+      </div>
+
+      <main style={{flex:1, padding:'10px', overflowY:'auto', zIndex:1}}>
+        <div style={winRowStyle}>
+          <div style={{flex:1}}>
+            <input style={winInput} value={newWinRate} onChange={e => setNewWinRate(e.target.value)} placeholder="%" type="number" />
+            <button onClick={() => {
+              if (!newWinRate) return;
+              const newRecord = { id: Date.now(), rate: parseFloat(newWinRate) };
+              update('winRateRecords', [newRecord, ...winRecords].slice(0, 10));
+              setNewWinRate('');
+            }} style={saveBtnStyle}>記録</button>
+            <div style={{height:'30px', marginTop:'5px'}}>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={[...winRecords].reverse()}>
+                  <Line type="monotone" dataKey="rate" stroke="#0ff" dot={{r:2}} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+          <div style={{display:'flex', flexDirection:'column', gap:'5px'}}>
+            <a href={`https://www.youtube.com/results?search_query=スト6+${selectedChar.name}+対策`} target="_blank" rel="noreferrer" style={linkBtn('#f00')}>YouTube</a>
+            <a href={playerName ? `https://sfbuff.site/search?q=${encodeURIComponent(playerName)}` : `https://sfbuff.site/`} target="_blank" rel="noreferrer" style={linkBtn('#f0f')}>Buff</a>
+          </div>
+        </div>
+
+        <div style={{textAlign:'center', color:'#f44', fontWeight:'bold', margin:'10px 0'}}>VS {selectedChar.name}</div>
+
+        <div style={tabGroupStyle}>
+          {TABS.map(t => (
+            <button key={t.id} onClick={() => setActiveTab(t.id)} style={{...tabBtnStyle, color: activeTab === t.id ? '#0ff' : '#666', background: activeTab === t.id ? '#222' : '#000'}}>
+              {t.icon} {t.label}
+            </button>
+          ))}
+        </div>
+
+        <div style={paletteStyle}>
+          {COMMANDS.map(cmd => <button key={cmd} onClick={() => insertCmd(cmd)} style={cmdBtnStyle}>{cmd}</button>)}
+        </div>
+
+        {activeTab === 'myCombo' ? (
+          <div>
+            {comboList.map((item, idx) => (
+              <div key={idx} style={comboCardStyle}>
+                <div style={{display:'flex', gap:'4px', flexWrap:'wrap', marginBottom:'8px'}}>
+                  {HIT_TYPES.map(ht => (
+                    <button key={ht} onClick={() => updateCombo(idx, 'hitType', ht)} style={{...hitTypeBtnStyle, background: item.hitType === ht ? '#f44' : '#333'}}>
+                      {ht}
+                    </button>
+                  ))}
+                </div>
+                <input style={comboInput} placeholder="始動技" value={item.start || ''} onFocus={() => setFocusField({type:'combo', index:idx, field:'start'})} onChange={e => updateCombo(idx, 'start', e.target.value)} />
+                <textarea style={comboArea} placeholder="コンボ内容" value={item.content || ''} onFocus={() => setFocusField({type:'combo', index:idx, field:'content'})} onChange={e => updateCombo(idx, 'content', e.target.value)} />
+              </div>
+            ))}
+          </div>
+        ) : activeTab === 'badHabits' ? (
+          <div style={{display:'flex', flexDirection:'column', gap:'10px'}}>
+            <div style={alertBoxStyle('#f44')}><label style={{fontSize:'10px'}}>🚫 悪癖</label>
+              <textarea style={noBorderArea} value={currentCharData.badHabits || ''} onChange={e => update('badHabits', e.target.value)} />
+            </div>
+            <div style={alertBoxStyle('#2e7')}><label style={{fontSize:'10px'}}>💡 矯正</label>
+              <textarea style={noBorderArea} value={currentCharData.correction || ''} onChange={e => update('correction', e.target.value)} />
+            </div>
+          </div>
+        ) : (
+          <textarea style={mainTextAreaStyle} value={currentCharData[activeTab] || ''} onFocus={() => setFocusField({type:'main'})} onChange={e => update(activeTab, e.target.value)} placeholder="メモを入力..." />
+        )}
+      </main>
+    </div>
+  );
+}
+
+const containerStyle = { display:'flex', flexDirection:'column', height:'100vh', background:'#050505', color:'#fff', overflow:'hidden' };
+const headerStyle = { display:'flex', justifyContent:'space-between', padding:'10px', background:'#111' };
+const nameInputStyle = { width:'70px', background:'#000', color:'#fff', border:'1px solid #444', fontSize:'10px', borderRadius:'4px', padding:'2px 5px' };
+const selectStyle = { background:'#000', color:'#0ff', border:'1px solid #0ff', borderRadius:'4px', fontSize:'10px' };
+const aiBtnStyle = { background:'linear-gradient(to right, #6a11cb, #2575fc)', border:'none', color:'#fff', borderRadius:'4px', fontSize:'10px', padding:'5px 10px' };
+const charNavStyle = { display:'flex', overflowX:'auto', padding:'10px', gap:'12px', background:'#000', borderBottom:'1px solid #222' };
+const charItemStyle = { display:'flex', flexDirection:'column', alignItems:'center', minWidth:'45px', cursor:'pointer' };
+const iconBox = { width:'40px', height:'40px', borderRadius:'5px', overflow:'hidden' };
+const winRowStyle = { display:'flex', gap:'10px', background:'#111', padding:'10px', borderRadius:'8px' };
+const winInput = { width:'35px', background:'#000', color:'#0f0', border:'1px solid #444', fontSize:'12px' };
+const saveBtnStyle = { background:'#0ff', border:'none', borderRadius:'3px', fontSize:'10px', marginLeft:'5px' };
+const linkBtn = (c) => ({ color:c, border:`1px solid ${c}`, padding:'3px 8px', borderRadius:'4px', fontSize:'10px', textDecoration:'none', textAlign:'center' });
+const tabGroupStyle = { display:'flex', gap:'2px', marginBottom:'10px' };
+const tabBtnStyle = { flex:1, padding:'8px 0', border:'1px solid #333', fontSize:'10px' };
+const paletteStyle = { display:'flex', flexWrap:'wrap', gap:'4px', background:'#111', padding:'8px', borderRadius:'8px', marginBottom:'10px' };
+const cmdBtnStyle = { background:'#333', color:'#fff', border:'none', padding:'5px 8px', borderRadius:'4px', fontSize:'11px' };
+const comboCardStyle = { background:'#111', padding:'10px', borderRadius:'8px', marginBottom:'10px', border:'1px solid #333' };
+const hitTypeBtnStyle = { border:'none', color:'#fff', fontSize:'9px', padding:'2px 6px', borderRadius:'3px' };
+const comboInput = { width:'100%', background:'#000', color:'#fff', border:'1px solid #444', marginBottom:'5px', padding:'5px', boxSizing:'border-box' };
+const comboArea = { width:'100%', background:'#000', color:'#ccc', border:'1px solid #333', padding:'5px', height:'50px', boxSizing:'border-box' };
+const alertBoxStyle = (c) => ({ border:`1px solid ${c}`, padding:'8px', borderRadius:'8px' });
+const noBorderArea = { width:'100%', background:'transparent', border:'none', color:'#eee', outline:'none', height:'50px' };
+const mainTextAreaStyle = { width:'100%', height:'200px', background:'#000', color:'#eee', padding:'10px', borderRadius:'8px', border:'1px solid #333', boxSizing:'border-box' };
