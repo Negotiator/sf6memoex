@@ -1,6 +1,4 @@
 import React, { useState, useEffect } from 'react';
-// recharts（グラフ）がエラーの原因になりやすいため、一旦インポートを外して簡略化します
-import { LineChart, Line, ResponsiveContainer } from 'recharts';
 
 const CHARACTERS = [
   { name: 'リュウ', id: 'ryu' }, { name: 'ルーク', id: 'luke' }, { name: 'ジェイミー', id: 'jamie' },
@@ -16,7 +14,6 @@ const CHARACTERS = [
 ].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
 
 const COMMANDS = ['5', '2', '6', '4', '8', '236', '214', '623', '41236', '63214', 'P', 'K', 'LP', 'MP', 'HP', 'LK', 'MK', 'HK', 'DR', 'PC'];
-const HIT_TYPES = ['通常', 'パニカン', 'カウンター', '持続', '空中'];
 
 const TABS = [
   { id: 'strategy', label: '対策', icon: '🧠' },
@@ -25,7 +22,6 @@ const TABS = [
   { id: 'todo', label: '実践', icon: '⚔️' },
 ];
 
-const OFFICIAL_ICON_URL = "https://pbs.twimg.com/profile_images/1664102919310860288/C-rC_605_400x400.jpg";
 const STORAGE_KEY = 'sf6_master_data_v2';
 
 export default function App() {
@@ -33,7 +29,6 @@ export default function App() {
   const [myChar, setMyChar] = useState(CHARACTERS[0]);
   const [data, setData] = useState({});
   const [activeTab, setActiveTab] = useState('strategy');
-  const [newWinRate, setNewWinRate] = useState('');
   const [focusField, setFocusField] = useState(null);
 
   useEffect(() => {
@@ -116,7 +111,9 @@ export default function App() {
       <div style={{ display: 'flex', overflowX: 'auto', gap: '10px', marginBottom: '20px', paddingBottom: '10px' }}>
         {CHARACTERS.map(c => (
           <div key={c.id} onClick={() => setSelectedChar(c)} style={{ cursor: 'pointer', opacity: selectedChar.id === c.id ? 1 : 0.4, textAlign: 'center' }}>
-            <div style={{ width: '40px', height: '40px', background: '#333', borderRadius: '5px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{c.name[0]}</div>
+            <div style={{ width: '40px', height: '40px', background: `url(/${c.id}.png) center/cover, #333`, borderRadius: '5px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {!data[c.id] && <span style={{fontSize: '10px'}}>{c.name[0]}</span>}
+            </div>
             <div style={{ fontSize: '8px' }}>{c.name}</div>
           </div>
         ))}
@@ -125,7 +122,7 @@ export default function App() {
       <div style={{ display: 'flex', gap: '5px', marginBottom: '10px' }}>
         {TABS.map(tab => (
           <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{ flex: 1, padding: '10px 0', background: activeTab === tab.id ? '#333' : '#000', color: activeTab === tab.id ? '#0ff' : '#666', border: '1px solid #444' }}>
-            {tab.label}
+            {tab.icon} {tab.label}
           </button>
         ))}
       </div>
