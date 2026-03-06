@@ -62,10 +62,10 @@ export default function App() {
 
   const updateCombo = (index, field, value) => {
     const allCharCombos = data.charCombos || {};
-    const myCombos = [...(allCharCombos[myChar.id] || [{start:'', content:'', hitType:'通常'}])];
+    const myCombos = [...(allCharCombos[myChar.id] || [{start:'', content:'', hitType:'通常', situation:''}])];
     myCombos[index] = { ...myCombos[index], [field]: value };
-    if (myCombos[myCombos.length - 1].content) {
-      myCombos.push({ start: '', content: '', hitType:'通常' });
+    if (myCombos[myCombos.length - 1].content || myCombos[myCombos.length - 1].start) {
+      myCombos.push({ start: '', content: '', hitType:'通常', situation:'' });
     }
     const newData = { ...data, charCombos: { ...allCharCombos, [myChar.id]: myCombos } };
     setData(newData);
@@ -77,67 +77,66 @@ export default function App() {
     const { type, index, field } = focusField;
     if (type === 'combo') {
       const allCharCombos = data.charCombos || {};
-      const myCombos = allCharCombos[myChar.id] || [{start:''}];
+      const myCombos = allCharCombos[myChar.id] || [{start:'', content:'', situation:''}];
       const current = myCombos[index]?.[field] || '';
-      updateCombo(index, field, current + ` [${cmd}] `);
+      updateCombo(index, field, current + `[${cmd}]`);
     } else {
       const current = data[selectedChar.id]?.[activeTab] || '';
-      update(activeTab, current + ` [${cmd}] `);
+      update(activeTab, current + `[${cmd}]`);
     }
   };
 
   const copyAIPrompt = () => {
-    const prompt = `SF6コーチとして対${selectedChar.name}の${myChar.name}対策を教えてください。`.trim();
-    navigator.clipboard.writeText(prompt).then(() => alert("コピーしました"));
+    const prompt = `あなたはSF6の高度なコーチです。自キャラ:${myChar.name}、敵キャラ:${selectedChar.name}。
+【最優先：敵キャラ対策の抽出】
+この動画から、対敵キャラにおける自キャラの立ち回り対策を抽出してください。
+・立ち回りの重要ポイント（要約）
+・主要な技への対処法や反撃ポイント
+これらをアプリの「対策」欄にそのまま貼れるよう、簡潔な箇条書きでまとめてください。
+※前置き不要、内容のみ出力してください。`.trim();
+    navigator.clipboard.writeText(prompt).then(() => alert("高度なコーチ指示をコピーしました！"));
   };
 
-  // ↓ バックアップ機能
   const exportData = () => {
     const dataStr = localStorage.getItem(STORAGE_KEY);
     if (!dataStr) return alert("データがありません");
-    navigator.clipboard.writeText(dataStr).then(() => alert("全データをクリップボードにコピーしました！メモ帳などに保存してください。"));
+    navigator.clipboard.writeText(dataStr).then(() => alert("コピーしました"));
   };
 
-  // ↓ 復元機能
   const importData = () => {
-    const input = prompt("バックアップしたテキストを貼り付けてください。");
+    const input = prompt("バックアップを貼り付け");
     if (input) {
-      try {
-        JSON.parse(input); // 形式チェック
-        localStorage.setItem(STORAGE_KEY, input);
-        alert("復元しました。ページを再読み込みします。");
-        window.location.reload();
-      } catch (e) {
-        alert("形式が正しくありません。");
-      }
+      try { JSON.parse(input); localStorage.setItem(STORAGE_KEY, input); window.location.reload(); } catch (e) { alert("形式エラー"); }
     }
+  };
+
+  const getYTLink = () => {
+    let query = "";
+    if (activeTab === 'myCombo') {
+      query = `スト6 ${myChar.name} コンボ セットプレイ`;
+    } else {
+      query = `スト6 ${selectedChar.name} 対策`;
+    }
+    return `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
   };
 
   const currentCharData = data[selectedChar.id] || {};
   const winRecords = currentCharData.winRateRecords || [];
-  const comboList = (data.charCombos && data.charCombos[myChar.id]) || [{start:'', content:'', hitType:'通常'}];
+  const comboList = (data.charCombos && data.charCombos[myChar.id]) || [{start:'', content:'', hitType:'通常', situation:''}];
 
   return (
     <div style={containerStyle}>
       <header style={headerStyle}>
         <div style={{display:'flex', gap:'5px'}}>
-          <input 
-            style={nameInputStyle} 
-            placeholder="PLAYER名" 
-            value={playerName} 
-            onChange={(e) => { setPlayerName(e.target.value); updateMyData('playerName', e.target.value); }} 
-          />
-          <select value={myChar.id} onChange={(e) => {
-            const char = CHARACTERS.find(c => c.id === e.target.value);
-            setMyChar(char); updateMyData('myCharId', char.id);
-          }} style={selectStyle}>
+          <input style={nameInputStyle} placeholder="PLAYER名" value={playerName} onChange={(e) => { setPlayerName(e.target.value); updateMyData('playerName', e.target.value); }} />
+          <select value={myChar.id} onChange={(e) => { const char = CHARACTERS.find(c => c.id === e.target.value); setMyChar(char); updateMyData('myCharId', char.id); }} style={selectStyle}>
             {CHARACTERS.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </div>
-        <div style={{display:'flex', gap:'5px'}}>
+        <div style={{display:'flex', gap:'4px'}}>
           <button onClick={copyAIPrompt} style={aiBtnStyle}>✨ AI</button>
-          <button onClick={exportData} style={backupBtnStyle}>💾 保存</button>
-          <button onClick={importData} style={restoreBtnStyle}>📥 復元</button>
+          <button onClick={exportData} style={backupBtnStyle}>💾</button>
+          <button onClick={importData} style={restoreBtnStyle}>📥</button>
         </div>
       </header>
 
@@ -149,34 +148,23 @@ export default function App() {
             </div>
             <div style={{fontSize:'8px', color: selectedChar.id === c.id ? '#0ff' : '#888'}}>{c.name}</div>
           </div>
-        ))}
+        </div>
       </div>
 
-      <main style={{flex:1, padding:'10px', overflowY:'auto', zIndex:1}}>
+      <main style={{flex:1, padding:'10px', overflowY:'auto'}}>
         <div style={winRowStyle}>
           <div style={{flex:1}}>
             <input style={winInput} value={newWinRate} onChange={e => setNewWinRate(e.target.value)} placeholder="%" type="number" />
-            <button onClick={() => {
-              if (!newWinRate) return;
-              const newRecord = { id: Date.now(), rate: parseFloat(newWinRate) };
-              update('winRateRecords', [newRecord, ...winRecords].slice(0, 10));
-              setNewWinRate('');
-            }} style={saveBtnStyle}>記録</button>
-            <div style={{height:'30px', marginTop:'5px'}}>
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={[...winRecords].reverse()}>
-                  <Line type="monotone" dataKey="rate" stroke="#0ff" dot={{r:2}} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
+            <button onClick={() => { if (!newWinRate) return; update('winRateRecords', [{ id: Date.now(), rate: parseFloat(newWinRate) }, ...winRecords].slice(0, 10)); setNewWinRate(''); }} style={saveBtnStyle}>記録</button>
+            <div style={{height:'30px', marginTop:'5px'}}><ResponsiveContainer><LineChart data={[...winRecords].reverse()}><Line type="monotone" dataKey="rate" stroke="#0ff" dot={{r:2}} /></LineChart></ResponsiveContainer></div>
           </div>
           <div style={{display:'flex', flexDirection:'column', gap:'5px'}}>
-            <a href={`https://www.youtube.com/results?search_query=スト6+${selectedChar.name}+対策`} target="_blank" rel="noreferrer" style={linkBtn('#f00')}>YouTube</a>
-            <a href={playerName ? `https://sfbuff.site/search?q=${encodeURIComponent(playerName)}` : `https://sfbuff.site/`} target="_blank" rel="noreferrer" style={linkBtn('#f0f')}>Buff</a>
+            <a href={getYTLink()} target="_blank" rel="noreferrer" style={linkBtn('#f00')}>YouTube</a>
+            <a href={playerName ? `https://sfbuff.site/search?q=${encodeURIComponent(playerName)}` : `https://sfbuff.site/`} target="_blank" rel="noreferrer" style={linkBtn('#0ff')}>SFBuff</a>
           </div>
         </div>
 
-        <div style={{textAlign:'center', color:'#f44', fontWeight:'bold', margin:'10px 0'}}>VS {selectedChar.name}</div>
+        <div style={{textAlign:'center', color:'#f44', fontWeight:'bold', margin:'8px 0'}}>VS {selectedChar.name}</div>
 
         <div style={tabGroupStyle}>
           {TABS.map(t => (
@@ -195,57 +183,54 @@ export default function App() {
             {comboList.map((item, idx) => (
               <div key={idx} style={comboCardStyle}>
                 <div style={{display:'flex', gap:'4px', flexWrap:'wrap', marginBottom:'8px'}}>
-                  {HIT_TYPES.map(ht => (
-                    <button key={ht} onClick={() => updateCombo(idx, 'hitType', ht)} style={{...hitTypeBtnStyle, background: item.hitType === ht ? '#f44' : '#333'}}>
-                      {ht}
-                    </button>
-                  ))}
+                  {HIT_TYPES.map(ht => <button key={ht} onClick={() => updateCombo(idx, 'hitType', ht)} style={{...hitTypeBtnStyle, background: item.hitType === ht ? '#f44' : '#333'}}>{ht}</button>)}
                 </div>
-                <input style={comboInput} placeholder="始動技" value={item.start || ''} onFocus={() => setFocusField({type:'combo', index:idx, field:'start'})} onChange={e => updateCombo(idx, 'start', e.target.value)} />
-                <textarea style={comboArea} placeholder="コンボ内容" value={item.content || ''} onFocus={() => setFocusField({type:'combo', index:idx, field:'content'})} onChange={e => updateCombo(idx, 'content', e.target.value)} />
+                <div style={comboRow}><div style={{flex:1}}><label style={miniLabel}>始動</label><input style={comboInput} value={item.start || ''} onFocus={() => setFocusField({type:'combo', index:idx, field:'start'})} onChange={e => updateCombo(idx, 'start', e.target.value)} /></div></div>
+                <div style={{marginTop:'5px'}}><label style={miniLabel}>内容</label><textarea style={comboArea} value={item.content || ''} onFocus={() => setFocusField({type:'combo', index:idx, field:'content'})} onChange={e => updateCombo(idx, 'content', e.target.value)} /></div>
+                <div style={situationBox}><label style={{...miniLabel, color:'#fc0'}}>⚡️ セットプレイ / 状況</label><input style={situationInput} value={item.situation || ''} onFocus={() => setFocusField({type:'combo', index:idx, field:'situation'})} onChange={e => updateCombo(idx, 'situation', e.target.value)} placeholder="有利フレームや起き攻め..." /></div>
               </div>
             ))}
           </div>
         ) : activeTab === 'badHabits' ? (
           <div style={{display:'flex', flexDirection:'column', gap:'10px'}}>
-            <div style={alertBoxStyle('#f44')}><label style={{fontSize:'10px'}}>🚫 悪癖</label>
-              <textarea style={noBorderArea} value={currentCharData.badHabits || ''} onChange={e => update('badHabits', e.target.value)} />
-            </div>
-            <div style={alertBoxStyle('#2e7')}><label style={{fontSize:'10px'}}>💡 矯正</label>
-              <textarea style={noBorderArea} value={currentCharData.correction || ''} onChange={e => update('correction', e.target.value)} />
-            </div>
+            <div style={alertBoxStyle('#f44')}><label style={{fontSize:'10px'}}>🚫 悪癖</label><textarea style={noBorderArea} value={currentCharData.badHabits || ''} onFocus={() => setFocusField({type:'main', field:'badHabits'})} onChange={e => update('badHabits', e.target.value)} /></div>
+            <div style={alertBoxStyle('#2e7')}><label style={{fontSize:'10px'}}>💡 矯正</label><textarea style={noBorderArea} value={currentCharData.correction || ''} onFocus={() => setFocusField({type:'main', field:'correction'})} onChange={e => update('correction', e.target.value)} /></div>
           </div>
         ) : (
-          <textarea style={mainTextAreaStyle} value={currentCharData[activeTab] || ''} onFocus={() => setFocusField({type:'main'})} onChange={e => update(activeTab, e.target.value)} placeholder="メモを入力..." />
+          <textarea style={mainTextAreaStyle} value={currentCharData[activeTab] || ''} onFocus={() => setFocusField({type:'main', field:activeTab})} onChange={e => update(activeTab, e.target.value)} placeholder="AIの回答をここにペースト..." />
         )}
       </main>
     </div>
   );
 }
 
-// スタイル定義（追加分含む）
+// スタイル定義
 const containerStyle = { display:'flex', flexDirection:'column', height:'100vh', background:'#050505', color:'#fff', overflow:'hidden' };
 const headerStyle = { display:'flex', justifyContent:'space-between', padding:'10px', background:'#111', alignItems:'center' };
 const nameInputStyle = { width:'60px', background:'#000', color:'#fff', border:'1px solid #444', fontSize:'10px', borderRadius:'4px', padding:'2px 5px' };
 const selectStyle = { background:'#000', color:'#0ff', border:'1px solid #0ff', borderRadius:'4px', fontSize:'10px' };
-const aiBtnStyle = { background:'linear-gradient(to right, #6a11cb, #2575fc)', border:'none', color:'#fff', borderRadius:'4px', fontSize:'9px', padding:'4px 8px' };
-const backupBtnStyle = { background:'#222', color:'#0ff', border:'1px solid #0ff', borderRadius:'4px', fontSize:'9px', padding:'4px 8px' };
-const restoreBtnStyle = { background:'#222', color:'#fc0', border:'1px solid #fc0', borderRadius:'4px', fontSize:'9px', padding:'4px 8px' };
+const aiBtnStyle = { background:'linear-gradient(to right, #6a11cb, #2575fc)', border:'none', color:'#fff', borderRadius:'4px', fontSize:'9px', padding:'4px 10px' };
+const backupBtnStyle = { background:'#222', color:'#0ff', border:'1px solid #0ff', borderRadius:'4px', fontSize:'11px', padding:'3px 6px' };
+const restoreBtnStyle = { background:'#222', color:'#fc0', border:'1px solid #fc0', borderRadius:'4px', fontSize:'11px', padding:'3px 6px' };
 const charNavStyle = { display:'flex', overflowX:'auto', padding:'10px', gap:'12px', background:'#000', borderBottom:'1px solid #222' };
 const charItemStyle = { display:'flex', flexDirection:'column', alignItems:'center', minWidth:'45px', cursor:'pointer' };
 const iconBox = { width:'40px', height:'40px', borderRadius:'5px', overflow:'hidden' };
 const winRowStyle = { display:'flex', gap:'10px', background:'#111', padding:'10px', borderRadius:'8px' };
 const winInput = { width:'35px', background:'#000', color:'#0f0', border:'1px solid #444', fontSize:'12px' };
 const saveBtnStyle = { background:'#0ff', border:'none', borderRadius:'3px', fontSize:'10px', marginLeft:'5px' };
-const linkBtn = (c) => ({ color:c, border:`1px solid ${c}`, padding:'3px 8px', borderRadius:'4px', fontSize:'10px', textDecoration:'none', textAlign:'center' });
+const linkBtn = (c) => ({ color:c, border:`1px solid ${c}`, padding:'4px 10px', borderRadius:'4px', fontSize:'10px', textDecoration:'none', textAlign:'center' });
 const tabGroupStyle = { display:'flex', gap:'2px', marginBottom:'10px' };
 const tabBtnStyle = { flex:1, padding:'8px 0', border:'1px solid #333', fontSize:'10px' };
 const paletteStyle = { display:'flex', flexWrap:'wrap', gap:'4px', background:'#111', padding:'8px', borderRadius:'8px', marginBottom:'10px' };
 const cmdBtnStyle = { background:'#333', color:'#fff', border:'none', padding:'5px 8px', borderRadius:'4px', fontSize:'11px' };
 const comboCardStyle = { background:'#111', padding:'10px', borderRadius:'8px', marginBottom:'10px', border:'1px solid #333' };
+const comboRow = { display:'flex', gap:'10px' };
+const miniLabel = { fontSize:'9px', color:'#888', display:'block', marginBottom:'2px' };
+const comboInput = { width:'100%', background:'#000', color:'#fff', border:'1px solid #444', padding:'5px', boxSizing:'border-box', fontSize:'12px' };
+const comboArea = { width:'100%', background:'#000', color:'#ccc', border:'1px solid #333', padding:'5px', height:'45px', boxSizing:'border-box', fontSize:'12px' };
+const situationBox = { marginTop:'8px', borderTop:'1px dashed #333', paddingTop:'8px' };
+const situationInput = { width:'100%', background:'#1a1a00', color:'#fc0', border:'1px solid #440', padding:'5px', boxSizing:'border-box', fontSize:'11px' };
 const hitTypeBtnStyle = { border:'none', color:'#fff', fontSize:'9px', padding:'2px 6px', borderRadius:'3px' };
-const comboInput = { width:'100%', background:'#000', color:'#fff', border:'1px solid #444', marginBottom:'5px', padding:'5px', boxSizing:'border-box' };
-const comboArea = { width:'100%', background:'#000', color:'#ccc', border:'1px solid #333', padding:'5px', height:'50px', boxSizing:'border-box' };
 const alertBoxStyle = (c) => ({ border:`1px solid ${c}`, padding:'8px', borderRadius:'8px' });
 const noBorderArea = { width:'100%', background:'transparent', border:'none', color:'#eee', outline:'none', height:'50px' };
 const mainTextAreaStyle = { width:'100%', height:'200px', background:'#000', color:'#eee', padding:'10px', borderRadius:'8px', border:'1px solid #333', boxSizing:'border-box' };
