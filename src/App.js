@@ -81,8 +81,8 @@ export default function App() {
       const current = myCombos[index]?.[field] || '';
       updateCombo(index, field, current + `[${cmd}]`);
     } else {
-      const current = data[selectedChar.id]?.[activeTab] || '';
-      update(activeTab, current + `[${cmd}]`);
+      const current = data[selectedChar.id]?.[focusField.field] || '';
+      update(focusField.field, current + `[${cmd}]`);
     }
   };
 
@@ -111,18 +111,16 @@ export default function App() {
   };
 
   const getYTLink = () => {
-    let query = "";
-    if (activeTab === 'myCombo') {
-      query = `スト6 ${myChar.name} コンボ セットプレイ`;
-    } else {
-      query = `スト6 ${selectedChar.name} 対策`;
-    }
+    let query = (activeTab === 'myCombo') 
+      ? `スト6 ${myChar.name} コンボ セットプレイ` 
+      : `スト6 ${selectedChar.name} 対策`;
     return `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
   };
 
   const currentCharData = data[selectedChar.id] || {};
   const winRecords = currentCharData.winRateRecords || [];
   const comboList = (data.charCombos && data.charCombos[myChar.id]) || [{start:'', content:'', hitType:'通常', situation:''}];
+  const activeTabInfo = TABS.find(t => t.id === activeTab);
 
   return (
     <div style={containerStyle}>
@@ -148,7 +146,7 @@ export default function App() {
             </div>
             <div style={{fontSize:'8px', color: selectedChar.id === c.id ? '#0ff' : '#888'}}>{c.name}</div>
           </div>
-        </div>
+        ))}
       </div>
 
       <main style={{flex:1, padding:'10px', overflowY:'auto'}}>
@@ -156,7 +154,7 @@ export default function App() {
           <div style={{flex:1}}>
             <input style={winInput} value={newWinRate} onChange={e => setNewWinRate(e.target.value)} placeholder="%" type="number" />
             <button onClick={() => { if (!newWinRate) return; update('winRateRecords', [{ id: Date.now(), rate: parseFloat(newWinRate) }, ...winRecords].slice(0, 10)); setNewWinRate(''); }} style={saveBtnStyle}>記録</button>
-            <div style={{height:'30px', marginTop:'5px'}}><ResponsiveContainer><LineChart data={[...winRecords].reverse()}><Line type="monotone" dataKey="rate" stroke="#0ff" dot={{r:2}} /></LineChart></ResponsiveContainer></div>
+            <div style={{height:'30px', marginTop:'5px'}}><ResponsiveContainer width="100%" height="100%"><LineChart data={[...winRecords].reverse()}><Line type="monotone" dataKey="rate" stroke="#0ff" dot={{r:2}} /></LineChart></ResponsiveContainer></div>
           </div>
           <div style={{display:'flex', flexDirection:'column', gap:'5px'}}>
             <a href={getYTLink()} target="_blank" rel="noreferrer" style={linkBtn('#f00')}>YouTube</a>
@@ -164,7 +162,7 @@ export default function App() {
           </div>
         </div>
 
-        <div style={{textAlign:'center', color:'#f44', fontWeight:'bold', margin:'8px 0'}}>VS {selectedChar.name}</div>
+        <div style={{textAlign:'center', color:'#f44', fontWeight:'bold', margin:'8px 0'}}>VS {selectedChar.name} ({activeTabInfo.label})</div>
 
         <div style={tabGroupStyle}>
           {TABS.map(t => (
@@ -204,7 +202,6 @@ export default function App() {
   );
 }
 
-// スタイル定義
 const containerStyle = { display:'flex', flexDirection:'column', height:'100vh', background:'#050505', color:'#fff', overflow:'hidden' };
 const headerStyle = { display:'flex', justifyContent:'space-between', padding:'10px', background:'#111', alignItems:'center' };
 const nameInputStyle = { width:'60px', background:'#000', color:'#fff', border:'1px solid #444', fontSize:'10px', borderRadius:'4px', padding:'2px 5px' };
