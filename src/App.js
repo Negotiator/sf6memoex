@@ -14,8 +14,10 @@ const CHARACTERS = [
   { name: 'C.ヴァイパー', id: 'crimson-viper' }, { name: 'アレックス', id: 'alex' }, { name: 'イングリット', id: 'ingrid' }
 ].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
 
-const COMMANDS = ['5', '2', '6', '4', '8', '236', '214', '623', '41236', '63214', 'P', 'K', 'LP', 'MP', 'HP', 'LK', 'MK', 'HK', 'DR', 'PC'];
+// コマンドボタンに OD, SA1-3 を追加
+const COMMANDS = ['5', '2', '6', '4', '8', '236', '214', '623', '41236', '63214', 'P', 'K', 'LP', 'MP', 'HP', 'LK', 'MK', 'HK', 'DR', 'PC', 'TC', '前ステ', 'OD', 'SA1', 'SA2', 'SA3'];
 const HIT_TYPES = ['通常', 'パニカン', 'カウンター', '持続', '空中'];
+const LOCATIONS = ['中央', '画面端', 'どこでも'];
 
 const TABS = [
   { id: 'strategy', label: '対策', icon: '🧠' },
@@ -62,10 +64,10 @@ export default function App() {
 
   const updateCombo = (index, field, value) => {
     const allCharCombos = data.charCombos || {};
-    const myCombos = [...(allCharCombos[myChar.id] || [{start:'', content:'', hitType:'通常', situation:''}])];
+    const myCombos = [...(allCharCombos[myChar.id] || [{start:'', content:'', hitType:'通常', situation:'', location:'中央'}])];
     myCombos[index] = { ...myCombos[index], [field]: value };
     if (myCombos[myCombos.length - 1].content || myCombos[myCombos.length - 1].start) {
-      myCombos.push({ start: '', content: '', hitType:'通常', situation:'' });
+      myCombos.push({ start: '', content: '', hitType:'通常', situation:'', location:'中央' });
     }
     const newData = { ...data, charCombos: { ...allCharCombos, [myChar.id]: myCombos } };
     setData(newData);
@@ -75,14 +77,19 @@ export default function App() {
   const insertCmd = (cmd) => {
     if (!focusField) return;
     const { type, index, field } = focusField;
+    const formatCmd = (current) => {
+      const trimmed = current ? current.trim() : "";
+      return trimmed === "" ? cmd : `${trimmed} > ${cmd}`;
+    };
+
     if (type === 'combo') {
       const allCharCombos = data.charCombos || {};
       const myCombos = allCharCombos[myChar.id] || [{start:'', content:'', situation:''}];
       const current = myCombos[index]?.[field] || '';
-      updateCombo(index, field, current + `[${cmd}]`);
+      updateCombo(index, field, formatCmd(current));
     } else {
       const current = data[selectedChar.id]?.[focusField.field] || '';
-      update(focusField.field, current + `[${cmd}]`);
+      update(focusField.field, formatCmd(current));
     }
   };
 
@@ -119,7 +126,7 @@ export default function App() {
 
   const currentCharData = data[selectedChar.id] || {};
   const winRecords = currentCharData.winRateRecords || [];
-  const comboList = (data.charCombos && data.charCombos[myChar.id]) || [{start:'', content:'', hitType:'通常', situation:''}];
+  const comboList = (data.charCombos && data.charCombos[myChar.id]) || [{start:'', content:'', hitType:'通常', situation:'', location:'中央'}];
   const activeTabInfo = TABS.find(t => t.id === activeTab);
 
   return (
@@ -140,11 +147,12 @@ export default function App() {
 
       <div style={charNavStyle}>
         {CHARACTERS.map(c => (
-          <div key={c.id} onClick={() => setSelectedChar(c)} style={{...charItemStyle, opacity: selectedChar.id === c.id ? 1 : 0.4}}>
+          <div key={c.id} onClick={() => setSelectedChar(c)} 
+               style={{...charItemStyle, opacity: selectedChar.id === c.id ? 1 : 0.4}}>
             <div style={{...iconBox, border: selectedChar.id === c.id ? '2px solid #0ff' : '1px solid #444'}}>
               <img src={`/${c.id}.png`} alt="" style={{width:'100%', height:'100%', objectFit:'cover'}} onError={(e) => { e.target.style.display='none'; e.target.parentElement.innerHTML=`<div style="font-size:10px;text-align:center;line-height:40px">${c.name[0]}</div>` }} />
             </div>
-            <div style={{fontSize:'8px', color: selectedChar.id === c.id ? '#0ff' : '#888'}}>{c.name}</div>
+            <div style={{fontSize:'8px', color: selectedChar.id === c.id ? '#0ff' : '#888', marginTop:'2px'}}>{c.name}</div>
           </div>
         ))}
       </div>
@@ -180,11 +188,16 @@ export default function App() {
           <div>
             {comboList.map((item, idx) => (
               <div key={idx} style={comboCardStyle}>
-                <div style={{display:'flex', gap:'4px', flexWrap:'wrap', marginBottom:'8px'}}>
-                  {HIT_TYPES.map(ht => <button key={ht} onClick={() => updateCombo(idx, 'hitType', ht)} style={{...hitTypeBtnStyle, background: item.hitType === ht ? '#f44' : '#333'}}>{ht}</button>)}
+                <div style={{display:'flex', justifyContent:'space-between', marginBottom:'8px'}}>
+                  <div style={{display:'flex', gap:'4px', flexWrap:'wrap'}}>
+                    {HIT_TYPES.map(ht => <button key={ht} onClick={() => updateCombo(idx, 'hitType', ht)} style={{...hitTypeBtnStyle, background: item.hitType === ht ? '#f44' : '#333'}}>{ht}</button>)}
+                  </div>
+                  <div style={{display:'flex', gap:'4px'}}>
+                    {LOCATIONS.map(loc => <button key={loc} onClick={() => updateCombo(idx, 'location', loc)} style={{...locBtnStyle, background: item.location === loc ? '#0ff' : '#333', color: item.location === loc ? '#000' : '#fff'}}>{loc}</button>)}
+                  </div>
                 </div>
                 <div style={comboRow}><div style={{flex:1}}><label style={miniLabel}>始動</label><input style={comboInput} value={item.start || ''} onFocus={() => setFocusField({type:'combo', index:idx, field:'start'})} onChange={e => updateCombo(idx, 'start', e.target.value)} /></div></div>
-                <div style={{marginTop:'5px'}}><label style={miniLabel}>内容</label><textarea style={comboArea} value={item.content || ''} onFocus={() => setFocusField({type:'combo', index:idx, field:'content'})} onChange={e => updateCombo(idx, 'content', e.target.value)} /></div>
+                <div style={{marginTop:'5px'}}><label style={miniLabel}>コンボレシピ</label><textarea style={comboArea} value={item.content || ''} onFocus={() => setFocusField({type:'combo', index:idx, field:'content'})} onChange={e => updateCombo(idx, 'content', e.target.value)} /></div>
                 <div style={situationBox}><label style={{...miniLabel, color:'#fc0'}}>⚡️ セットプレイ / 状況</label><input style={situationInput} value={item.situation || ''} onFocus={() => setFocusField({type:'combo', index:idx, field:'situation'})} onChange={e => updateCombo(idx, 'situation', e.target.value)} placeholder="有利フレームや起き攻め..." /></div>
               </div>
             ))}
@@ -210,7 +223,7 @@ const aiBtnStyle = { background:'linear-gradient(to right, #6a11cb, #2575fc)', b
 const backupBtnStyle = { background:'#222', color:'#0ff', border:'1px solid #0ff', borderRadius:'4px', fontSize:'11px', padding:'3px 6px' };
 const restoreBtnStyle = { background:'#222', color:'#fc0', border:'1px solid #fc0', borderRadius:'4px', fontSize:'11px', padding:'3px 6px' };
 const charNavStyle = { display:'flex', overflowX:'auto', padding:'10px', gap:'12px', background:'#000', borderBottom:'1px solid #222' };
-const charItemStyle = { display:'flex', flexDirection:'column', alignItems:'center', minWidth:'45px', cursor:'pointer' };
+const charItemStyle = { display:'flex', flexDirection:'column', alignItems:'center', minWidth:'45px', cursor:'pointer', transition: 'opacity 0.2s' };
 const iconBox = { width:'40px', height:'40px', borderRadius:'5px', overflow:'hidden' };
 const winRowStyle = { display:'flex', gap:'10px', background:'#111', padding:'10px', borderRadius:'8px' };
 const winInput = { width:'35px', background:'#000', color:'#0f0', border:'1px solid #444', fontSize:'12px' };
@@ -228,6 +241,7 @@ const comboArea = { width:'100%', background:'#000', color:'#ccc', border:'1px s
 const situationBox = { marginTop:'8px', borderTop:'1px dashed #333', paddingTop:'8px' };
 const situationInput = { width:'100%', background:'#1a1a00', color:'#fc0', border:'1px solid #440', padding:'5px', boxSizing:'border-box', fontSize:'11px' };
 const hitTypeBtnStyle = { border:'none', color:'#fff', fontSize:'9px', padding:'2px 6px', borderRadius:'3px' };
+const locBtnStyle = { border:'none', fontSize:'9px', padding:'2px 6px', borderRadius:'3px' };
 const alertBoxStyle = (c) => ({ border:`1px solid ${c}`, padding:'8px', borderRadius:'8px' });
 const noBorderArea = { width:'100%', background:'transparent', border:'none', color:'#eee', outline:'none', height:'50px' };
 const mainTextAreaStyle = { width:'100%', height:'200px', background:'#000', color:'#eee', padding:'10px', borderRadius:'8px', border:'1px solid #333', boxSizing:'border-box' };
