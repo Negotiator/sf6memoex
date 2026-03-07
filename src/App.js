@@ -63,10 +63,10 @@ export default function App() {
 
   const updateCombo = (index, field, value) => {
     const allCharCombos = data.charCombos || {};
-    const myCombos = [...(allCharCombos[myChar.id] || [{start:'', content:'', hitType:'通常', situation:'', location:'中央'}])];
+    const myCombos = [...(allCharCombos[myChar.id] || [{start:'', content:'', hitType:'通常', situation:'', location:'中央', difficulty:1, successRate:100}])];
     myCombos[index] = { ...myCombos[index], [field]: value };
     if (myCombos[myCombos.length - 1].content || myCombos[myCombos.length - 1].start) {
-      myCombos.push({ start: '', content: '', hitType:'通常', situation:'', location:'中央' });
+      myCombos.push({ start: '', content: '', hitType:'通常', situation:'', location:'中央', difficulty:1, successRate:100 });
     }
     const newData = { ...data, charCombos: { ...allCharCombos, [myChar.id]: myCombos } };
     setData(newData);
@@ -76,94 +76,56 @@ export default function App() {
   const insertCmd = (cmd) => {
     if (!focusField) return;
     const { type, index, field } = focusField;
-    
     const formatCmd = (current) => {
       const trimmed = current ? current.trim() : "";
       if (trimmed === "") return cmd;
-
-      // 直前の文字を取得
       const lastPart = trimmed.split(' ').pop();
-      const isNumber = /^[0-9]+$/.test(lastPart);
-      const isOD = lastPart === "OD";
-
-      // 直前が数字またはODならスペースのみ、それ以外なら > を入れる
-      if (isNumber || isOD) {
-        return `${trimmed}${cmd}`;
-      } else {
-        return `${trimmed} > ${cmd}`;
-      }
+      if (cmd === "TC") return `${trimmed} ${cmd}`;
+      if (/^[0-9]+$/.test(lastPart) || lastPart === "OD") return `${trimmed}${cmd}`;
+      return `${trimmed} > ${cmd}`;
     };
-
     if (type === 'combo') {
       const allCharCombos = data.charCombos || {};
-      const myCombos = allCharCombos[myChar.id] || [{start:'', content:'', situation:''}];
-      const current = myCombos[index]?.[field] || '';
-      updateCombo(index, field, formatCmd(current));
+      const myCombos = allCharCombos[myChar.id] || [];
+      updateCombo(index, field, formatCmd(myCombos[index]?.[field] || ''));
     } else {
-      const current = data[selectedChar.id]?.[focusField.field] || '';
-      update(focusField.field, formatCmd(current));
+      update(focusField.field, formatCmd(data[selectedChar.id]?.[focusField.field] || ''));
     }
   };
 
-  // （以下、前回と同じUIコンポーネントのため中略。スタイル等も含めすべて維持しています）
-  const copyAIPrompt = () => {
-    const prompt = `あなたはSF6の高度なコーチです。自キャラ:${myChar.name}、敵キャラ:${selectedChar.name}。
-【最優先：敵キャラ対策の抽出】
-この動画から、対敵キャラにおける自キャラの立ち回り対策を抽出してください。
-・立ち回りの重要ポイント（要約）
-・主要な技への対処法や反撃ポイント
-これらをアプリの「対策」欄にそのまま貼れるよう、簡潔な箇条書きでまとめてください。
-※前置き不要、内容のみ出力してください。`.trim();
-    navigator.clipboard.writeText(prompt).then(() => alert("高度なコーチ指示をコピーしました！"));
-  };
-
-  const exportData = () => {
-    const dataStr = localStorage.getItem(STORAGE_KEY);
-    if (!dataStr) return alert("データがありません");
-    navigator.clipboard.writeText(dataStr).then(() => alert("コピーしました"));
-  };
-
-  const importData = () => {
-    const input = prompt("バックアップを貼り付け");
-    if (input) {
-      try { JSON.parse(input); localStorage.setItem(STORAGE_KEY, input); window.location.reload(); } catch (e) { alert("形式エラー"); }
-    }
-  };
-
-  const getYTLink = () => {
-    let query = (activeTab === 'myCombo') 
-      ? `スト6 ${myChar.name} コンボ セットプレイ` 
-      : `スト6 ${selectedChar.name} 対策`;
-    return `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
+  const getSFBuffLink = () => {
+    if (!playerName) return "https://sfbuff.site/";
+    return /^[0-9]+$/.test(playerName) 
+      ? `https://sfbuff.site/fighters/search?q=${encodeURIComponent(playerName)}` 
+      : `https://sfbuff.site/search?q=${encodeURIComponent(playerName)}`;
   };
 
   const currentCharData = data[selectedChar.id] || {};
-  const winRecords = currentCharData.winRateRecords || [];
-  const comboList = (data.charCombos && data.charCombos[myChar.id]) || [{start:'', content:'', hitType:'通常', situation:'', location:'中央'}];
-  const activeTabInfo = TABS.find(t => t.id === activeTab);
+  const comboList = (data.charCombos && data.charCombos[myChar.id]) || [{start:'', content:'', hitType:'通常', situation:'', location:'中央', difficulty:1, successRate:100}];
+  
+  // 成功率80%未満のコンボを抽出
+  const trainingList = comboList.filter(c => c.content && (parseInt(c.successRate) || 0) < 80);
 
   return (
     <div style={containerStyle}>
       <header style={headerStyle}>
         <div style={{display:'flex', gap:'5px'}}>
-          <input style={nameInputStyle} placeholder="PLAYER名" value={playerName} onChange={(e) => { setPlayerName(e.target.value); updateMyData('playerName', e.target.value); }} />
+          <input style={nameInputStyle} placeholder="コード" value={playerName} onChange={(e) => { setPlayerName(e.target.value); updateMyData('playerName', e.target.value); }} />
           <select value={myChar.id} onChange={(e) => { const char = CHARACTERS.find(c => c.id === e.target.value); setMyChar(char); updateMyData('myCharId', char.id); }} style={selectStyle}>
             {CHARACTERS.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </div>
         <div style={{display:'flex', gap:'4px'}}>
-          <button onClick={copyAIPrompt} style={aiBtnStyle}>✨ AI</button>
-          <button onClick={exportData} style={backupBtnStyle}>💾</button>
-          <button onClick={importData} style={restoreBtnStyle}>📥</button>
+          <button onClick={() => navigator.clipboard.writeText(JSON.stringify(data)).then(() => alert("保存"))} style={backupBtnStyle}>💾</button>
+          <button onClick={() => { const input = prompt("インポート"); if (input) { try { JSON.parse(input); localStorage.setItem(STORAGE_KEY, input); window.location.reload(); } catch(e){} } }} style={restoreBtnStyle}>📥</button>
         </div>
       </header>
 
       <div style={charNavStyle}>
         {CHARACTERS.map(c => (
-          <div key={c.id} onClick={() => setSelectedChar(c)} 
-               style={{...charItemStyle, opacity: selectedChar.id === c.id ? 1 : 0.4}}>
+          <div key={c.id} onClick={() => setSelectedChar(c)} style={{...charItemStyle, opacity: selectedChar.id === c.id ? 1 : 0.4}}>
             <div style={{...iconBox, border: selectedChar.id === c.id ? '2px solid #0ff' : '1px solid #444'}}>
-              <img src={`/${c.id}.png`} alt="" style={{width:'100%', height:'100%', objectFit:'cover'}} onError={(e) => { e.target.style.display='none'; e.target.parentElement.innerHTML=`<div style="font-size:10px;text-align:center;line-height:40px">${c.name[0]}</div>` }} />
+              <img src={`/${c.id}.png`} alt="" style={{width:'100%', height:'100%', objectFit:'cover'}} />
             </div>
             <div style={{fontSize:'8px', color: selectedChar.id === c.id ? '#0ff' : '#888', marginTop:'2px'}}>{c.name}</div>
           </div>
@@ -174,16 +136,14 @@ export default function App() {
         <div style={winRowStyle}>
           <div style={{flex:1}}>
             <input style={winInput} value={newWinRate} onChange={e => setNewWinRate(e.target.value)} placeholder="%" type="number" />
-            <button onClick={() => { if (!newWinRate) return; update('winRateRecords', [{ id: Date.now(), rate: parseFloat(newWinRate) }, ...winRecords].slice(0, 10)); setNewWinRate(''); }} style={saveBtnStyle}>記録</button>
-            <div style={{height:'30px', marginTop:'5px'}}><ResponsiveContainer width="100%" height="100%"><LineChart data={[...winRecords].reverse()}><Line type="monotone" dataKey="rate" stroke="#0ff" dot={{r:2}} /></LineChart></ResponsiveContainer></div>
+            <button onClick={() => { if (!newWinRate) return; update('winRateRecords', [{ id: Date.now(), rate: parseFloat(newWinRate) }, ...(currentCharData.winRateRecords || [])].slice(0, 10)); setNewWinRate(''); }} style={saveBtnStyle}>記録</button>
+            <div style={{height:'30px', marginTop:'5px'}}><ResponsiveContainer width="100%" height="100%"><LineChart data={[...(currentCharData.winRateRecords || [])].reverse()}><Line type="monotone" dataKey="rate" stroke="#0ff" dot={{r:2}} /></LineChart></ResponsiveContainer></div>
           </div>
           <div style={{display:'flex', flexDirection:'column', gap:'5px'}}>
-            <a href={getYTLink()} target="_blank" rel="noreferrer" style={linkBtn('#f00')}>YouTube</a>
-            <a href={playerName ? `https://sfbuff.site/search?q=${encodeURIComponent(playerName)}` : `https://sfbuff.site/`} target="_blank" rel="noreferrer" style={linkBtn('#0ff')}>SFBuff</a>
+            <a href={getSFBuffLink()} target="_blank" rel="noreferrer" style={linkBtn('#0ff')}>SFBuff</a>
+            <a href={`https://www.youtube.com/results?search_query=${encodeURIComponent(activeTab === 'myCombo' ? `スト6 ${myChar.name}` : `スト6 ${selectedChar.name} 対策`)}`} target="_blank" rel="noreferrer" style={linkBtn('#f00')}>YT</a>
           </div>
         </div>
-
-        <div style={{textAlign:'center', color:'#f44', fontWeight:'bold', margin:'8px 0'}}>VS {selectedChar.name} ({activeTabInfo.label})</div>
 
         <div style={tabGroupStyle}>
           {TABS.map(t => (
@@ -193,69 +153,80 @@ export default function App() {
           ))}
         </div>
 
-        <div style={paletteStyle}>
-          {COMMANDS.map(cmd => <button key={cmd} onClick={() => insertCmd(cmd)} style={cmdBtnStyle}>{cmd}</button>)}
-        </div>
+        {activeTab !== 'todo' && (
+          <div style={paletteStyle}>
+            {COMMANDS.map(cmd => <button key={cmd} onClick={() => insertCmd(cmd)} style={cmdBtnStyle}>{cmd}</button>)}
+          </div>
+        )}
 
         {activeTab === 'myCombo' ? (
           <div>
             {comboList.map((item, idx) => (
               <div key={idx} style={comboCardStyle}>
                 <div style={{display:'flex', justifyContent:'space-between', marginBottom:'8px'}}>
-                  <div style={{display:'flex', gap:'4px', flexWrap:'wrap'}}>
-                    {HIT_TYPES.map(ht => <button key={ht} onClick={() => updateCombo(idx, 'hitType', ht)} style={{...hitTypeBtnStyle, background: item.hitType === ht ? '#f44' : '#333'}}>{ht}</button>)}
-                  </div>
-                  <div style={{display:'flex', gap:'4px'}}>
-                    {LOCATIONS.map(loc => <button key={loc} onClick={() => updateCombo(idx, 'location', loc)} style={{...locBtnStyle, background: item.location === loc ? '#0ff' : '#333', color: item.location === loc ? '#000' : '#fff'}}>{loc}</button>)}
+                  <select value={item.difficulty || 1} onChange={e => updateCombo(idx, 'difficulty', e.target.value)} style={miniSelect}>
+                    {[1,2,3,4,5].map(n => <option key={n} value={n}>{"★".repeat(n)}</option>)}
+                  </select>
+                  <div style={{display:'flex', gap:'5px', alignItems:'center'}}>
+                    <span style={miniLabel}>成功率</span>
+                    <input type="number" style={rateInput} value={item.successRate || 0} onChange={e => updateCombo(idx, 'successRate', e.target.value)} />
+                    <span style={miniLabel}>%</span>
                   </div>
                 </div>
                 <div style={comboRow}><div style={{flex:1}}><label style={miniLabel}>始動</label><input style={comboInput} value={item.start || ''} onFocus={() => setFocusField({type:'combo', index:idx, field:'start'})} onChange={e => updateCombo(idx, 'start', e.target.value)} /></div></div>
-                <div style={{marginTop:'5px'}}><label style={miniLabel}>コンボレシピ</label><textarea style={comboArea} value={item.content || ''} onFocus={() => setFocusField({type:'combo', index:idx, field:'content'})} onChange={e => updateCombo(idx, 'content', e.target.value)} /></div>
-                <div style={situationBox}><label style={{...miniLabel, color:'#fc0'}}>⚡️ セットプレイ / 状況</label><input style={situationInput} value={item.situation || ''} onFocus={() => setFocusField({type:'combo', index:idx, field:'situation'})} onChange={e => updateCombo(idx, 'situation', e.target.value)} placeholder="有利フレームや起き攻め..." /></div>
+                <div style={{marginTop:'5px'}}><label style={miniLabel}>レシピ</label><textarea style={comboArea} value={item.content || ''} onFocus={() => setFocusField({type:'combo', index:idx, field:'content'})} onChange={e => updateCombo(idx, 'content', e.target.value)} /></div>
               </div>
             ))}
           </div>
-        ) : activeTab === 'badHabits' ? (
-          <div style={{display:'flex', flexDirection:'column', gap:'10px'}}>
-            <div style={alertBoxStyle('#f44')}><label style={{fontSize:'10px'}}>🚫 悪癖</label><textarea style={noBorderArea} value={currentCharData.badHabits || ''} onFocus={() => setFocusField({type:'main', field:'badHabits'})} onChange={e => update('badHabits', e.target.value)} /></div>
-            <div style={alertBoxStyle('#2e7')}><label style={{fontSize:'10px'}}>💡 矯正</label><textarea style={noBorderArea} value={currentCharData.correction || ''} onFocus={() => setFocusField({type:'main', field:'correction'})} onChange={e => update('correction', e.target.value)} /></div>
+        ) : activeTab === 'todo' ? (
+          <div>
+            <div style={sectionTitle}>⚔️ コンボ集中練習リスト (成功率80%未満)</div>
+            {trainingList.length > 0 ? trainingList.map((item, idx) => (
+              <div key={idx} style={trainingCard}>
+                <div style={{display:'flex', justifyContent:'space-between', fontSize:'10px', color:'#888'}}>
+                  <span>難易度: {"★".repeat(item.difficulty || 1)}</span>
+                  <span style={{color: '#f44'}}>現在: {item.successRate}%</span>
+                </div>
+                <div style={{color:'#fff', fontSize:'12px', fontWeight:'bold', marginTop:'5px'}}>{item.start}</div>
+                <div style={{color:'#0ff', fontSize:'11px', marginTop:'3px'}}>{item.content}</div>
+              </div>
+            )) : <div style={{textAlign:'center', color:'#888', marginTop:'20px'}}>完璧です！練習が必要なコンボはありません。</div>}
+            
+            <div style={{...sectionTitle, marginTop:'20px'}}>📝 その他実践メモ</div>
+            <textarea style={mainTextAreaStyle} value={currentCharData.todo || ''} onFocus={() => setFocusField({type:'main', field:'todo'})} onChange={e => update('todo', e.target.value)} />
           </div>
         ) : (
-          <textarea style={mainTextAreaStyle} value={currentCharData[activeTab] || ''} onFocus={() => setFocusField({type:'main', field:activeTab})} onChange={e => update(activeTab, e.target.value)} placeholder="AIの回答をここにペースト..." />
+          <textarea style={mainTextAreaStyle} value={currentCharData[activeTab] || ''} onFocus={() => setFocusField({type:'main', field:activeTab})} onChange={e => update(activeTab, e.target.value)} />
         )}
       </main>
     </div>
   );
 }
 
-// スタイルは前回と同様のため省略なしでそのままお使いいただけます
 const containerStyle = { display:'flex', flexDirection:'column', height:'100vh', background:'#050505', color:'#fff', overflow:'hidden' };
 const headerStyle = { display:'flex', justifyContent:'space-between', padding:'10px', background:'#111', alignItems:'center' };
-const nameInputStyle = { width:'60px', background:'#000', color:'#fff', border:'1px solid #444', fontSize:'10px', borderRadius:'4px', padding:'2px 5px' };
+const nameInputStyle = { width:'80px', background:'#000', color:'#fff', border:'1px solid #444', fontSize:'10px', borderRadius:'4px', padding:'2px 5px' };
 const selectStyle = { background:'#000', color:'#0ff', border:'1px solid #0ff', borderRadius:'4px', fontSize:'10px' };
-const aiBtnStyle = { background:'linear-gradient(to right, #6a11cb, #2575fc)', border:'none', color:'#fff', borderRadius:'4px', fontSize:'9px', padding:'4px 10px' };
-const backupBtnStyle = { background:'#222', color:'#0ff', border:'1px solid #0ff', borderRadius:'4px', fontSize:'11px', padding:'3px 6px' };
-const restoreBtnStyle = { background:'#222', color:'#fc0', border:'1px solid #fc0', borderRadius:'4px', fontSize:'11px', padding:'3px 6px' };
+const backupBtnStyle = { background:'#222', color:'#0ff', border:'1px solid #0ff', borderRadius:'4px', padding:'3px 6px' };
+const restoreBtnStyle = { background:'#222', color:'#fc0', border:'1px solid #fc0', borderRadius:'4px', padding:'3px 6px' };
 const charNavStyle = { display:'flex', overflowX:'auto', padding:'10px', gap:'12px', background:'#000', borderBottom:'1px solid #222' };
-const charItemStyle = { display:'flex', flexDirection:'column', alignItems:'center', minWidth:'45px', cursor:'pointer', transition: 'opacity 0.2s' };
+const charItemStyle = { display:'flex', flexDirection:'column', alignItems:'center', minWidth:'45px' };
 const iconBox = { width:'40px', height:'40px', borderRadius:'5px', overflow:'hidden' };
-const winRowStyle = { display:'flex', gap:'10px', background:'#111', padding:'10px', borderRadius:'8px' };
-const winInput = { width:'35px', background:'#000', color:'#0f0', border:'1px solid #444', fontSize:'12px' };
+const winRowStyle = { display:'flex', gap:'10px', background:'#111', padding:'10px', borderRadius:'8px', marginBottom:'10px' };
+const winInput = { width:'35px', background:'#000', color:'#0f0', border:'1px solid #444' };
 const saveBtnStyle = { background:'#0ff', border:'none', borderRadius:'3px', fontSize:'10px', marginLeft:'5px' };
-const linkBtn = (c) => ({ color:c, border:`1px solid ${c}`, padding:'4px 10px', borderRadius:'4px', fontSize:'10px', textDecoration:'none', textAlign:'center' });
+const linkBtn = (c) => ({ color:c, border:`1px solid ${c}`, padding:'4px 8px', borderRadius:'4px', fontSize:'10px', textDecoration:'none', textAlign:'center' });
 const tabGroupStyle = { display:'flex', gap:'2px', marginBottom:'10px' };
 const tabBtnStyle = { flex:1, padding:'8px 0', border:'1px solid #333', fontSize:'10px' };
 const paletteStyle = { display:'flex', flexWrap:'wrap', gap:'4px', background:'#111', padding:'8px', borderRadius:'8px', marginBottom:'10px' };
 const cmdBtnStyle = { background:'#333', color:'#fff', border:'none', padding:'5px 8px', borderRadius:'4px', fontSize:'11px' };
 const comboCardStyle = { background:'#111', padding:'10px', borderRadius:'8px', marginBottom:'10px', border:'1px solid #333' };
+const miniSelect = { background:'#222', color:'#fc0', border:'1px solid #444', fontSize:'10px', borderRadius:'3px' };
+const rateInput = { width:'40px', background:'#000', color:'#f44', border:'1px solid #444', textAlign:'center', fontSize:'12px' };
+const comboInput = { width:'100%', background:'#000', color:'#fff', border:'1px solid #444', padding:'5px', fontSize:'12px' };
+const comboArea = { width:'100%', background:'#000', color:'#ccc', border:'1px solid #333', padding:'5px', height:'45px', fontSize:'12px' };
+const miniLabel = { fontSize:'9px', color:'#888' };
+const sectionTitle = { fontSize:'12px', color:'#fc0', marginBottom:'10px', fontWeight:'bold', borderLeft:'3px solid #fc0', paddingLeft:'8px' };
+const trainingCard = { background:'#1a1a1a', padding:'10px', borderRadius:'6px', marginBottom:'8px', borderLeft:'3px solid #f44' };
+const mainTextAreaStyle = { width:'100%', height:'200px', background:'#000', color:'#eee', padding:'10px', borderRadius:'8px', border:'1px solid #333' };
 const comboRow = { display:'flex', gap:'10px' };
-const miniLabel = { fontSize:'9px', color:'#888', display:'block', marginBottom:'2px' };
-const comboInput = { width:'100%', background:'#000', color:'#fff', border:'1px solid #444', padding:'5px', boxSizing:'border-box', fontSize:'12px' };
-const comboArea = { width:'100%', background:'#000', color:'#ccc', border:'1px solid #333', padding:'5px', height:'45px', boxSizing:'border-box', fontSize:'12px' };
-const situationBox = { marginTop:'8px', borderTop:'1px dashed #333', paddingTop:'8px' };
-const situationInput = { width:'100%', background:'#1a1a00', color:'#fc0', border:'1px solid #440', padding:'5px', boxSizing:'border-box', fontSize:'11px' };
-const hitTypeBtnStyle = { border:'none', color:'#fff', fontSize:'9px', padding:'2px 6px', borderRadius:'3px' };
-const locBtnStyle = { border:'none', fontSize:'9px', padding:'2px 6px', borderRadius:'3px' };
-const alertBoxStyle = (c) => ({ border:`1px solid ${c}`, padding:'8px', borderRadius:'8px' });
-const noBorderArea = { width:'100%', background:'transparent', border:'none', color:'#eee', outline:'none', height:'50px' };
-const mainTextAreaStyle = { width:'100%', height:'200px', background:'#000', color:'#eee', padding:'10px', borderRadius:'8px', border:'1px solid #333', boxSizing:'border-box' };
