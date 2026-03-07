@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { LineChart, Line, ResponsiveContainer } from 'recharts';
 
 const CHARACTERS = [
   { name: 'リュウ', id: 'ryu' }, { name: 'ルーク', id: 'luke' }, { name: 'ジェイミー', id: 'jamie' },
@@ -38,7 +37,6 @@ export default function App() {
   const [playerName, setPlayerName] = useState('');
   const [data, setData] = useState({});
   const [activeTab, setActiveTab] = useState('strategy');
-  const [newWinRate, setNewWinRate] = useState('');
   const [focusField, setFocusField] = useState(null);
 
   useEffect(() => {
@@ -72,7 +70,6 @@ export default function App() {
     const myList = [...(allLists[charId] || [defaultItem])];
     myList[index] = { ...myList[index], [field]: value };
     
-    // 最終行入力で自動追加
     if (myList[myList.length - 1].content || myList[myList.length - 1].start || myList[myList.length - 1].setup) {
       myList.push(defaultItem);
     }
@@ -130,14 +127,14 @@ export default function App() {
             ))}
           </div>
         </div>
-        <button onClick={() => navigator.clipboard.writeText(JSON.stringify(data)).then(() => alert("保存"))} style={backupBtnStyle}>💾</button>
+        <button onClick={() => navigator.clipboard.writeText(JSON.stringify(data)).then(() => alert("保存しました"))} style={backupBtnStyle}>💾</button>
       </header>
 
       <div style={charNavStyle}>
         {CHARACTERS.map(c => (
           <div key={c.id} onClick={() => setSelectedChar(c)} style={{...charItemStyle, opacity: selectedChar.id === c.id ? 1 : 0.4}}>
             <div style={{...iconBox, border: selectedChar.id === c.id ? '2px solid #0ff' : '1px solid #444'}}>
-              <img src={`/${c.id}.png`} alt="" style={{width:'100%', height:'100%', objectFit:'cover'}} onError={(e) => { e.target.style.display='none'; e.target.parentElement.innerHTML=c.name[0] }} />
+              <div style={{fontSize:'12px'}}>{c.name[0]}</div>
             </div>
             <div style={{fontSize:'8px', color: selectedChar.id === c.id ? '#0ff' : '#888'}}>{c.name}</div>
           </div>
@@ -169,12 +166,19 @@ export default function App() {
                 </div>
                 <div style={inputGrid}>
                    <div><label style={miniLabel}>始動</label><input style={comboInput} value={item.start || ''} onFocus={() => setFocusField({type:'list', listKey:'charCombos', charId:myChar.id, index:idx, field:'start'})} onChange={e => updateList('charCombos', myChar.id, idx, 'start', e.target.value)} /></div>
-                   <div><label style={miniLabel}>ダメージ</label><input style={comboInput} type="number" value={item.dmg || ''} onChange={e => updateList('charCombos', myChar.id, idx, 'dmg', e.target.value)} placeholder="例: 2500" /></div>
-                   <div><label style={miniLabel}>有利F</label><input style={{...comboInput, color:'#0f0'}} type="number" value={item.plusF || ''} onChange={e => updateList('charCombos', myChar.id, idx, 'plusF', e.target.value)} placeholder="+42" /></div>
+                   <div><label style={miniLabel}>DMG</label><input style={comboInput} type="number" value={item.dmg || ''} onChange={e => updateList('charCombos', myChar.id, idx, 'dmg', e.target.value)} /></div>
+                   <div><label style={miniLabel}>有利F</label><input style={{...comboInput, color:'#0f0'}} type="number" value={item.plusF || ''} onChange={e => updateList('charCombos', myChar.id, idx, 'plusF', e.target.value)} /></div>
                 </div>
                 <div style={{marginTop:'5px'}}><label style={miniLabel}>レシピ</label><textarea style={comboArea} value={item.content || ''} onFocus={() => setFocusField({type:'list', listKey:'charCombos', charId:myChar.id, index:idx, field:'content'})} onChange={e => updateList('charCombos', myChar.id, idx, 'content', e.target.value)} /></div>
-                
-                {/* セットプレイ提案 */}
+                <div style={{marginTop:'5px', display:'flex', gap:'10px'}}>
+                  <div style={{flex:1}}><label style={miniLabel}>成功率(%)</label><input type="number" style={comboInput} value={item.successRate || 0} onChange={e => updateList('charCombos', myChar.id, idx, 'successRate', e.target.value)} /></div>
+                  <div style={{flex:1}}>
+                    <label style={miniLabel}>難易度</label>
+                    <select value={item.difficulty || 1} onChange={e => updateList('charCombos', myChar.id, idx, 'difficulty', e.target.value)} style={comboInput}>
+                      {[1,2,3,4,5].map(n => <option key={n} value={n}>{"★".repeat(n)}</option>)}
+                    </select>
+                  </div>
+                </div>
                 {item.plusF && (
                   <div style={setupSuggestion}>
                     <div style={{fontSize:'9px', color:'#fc0', marginBottom:'4px'}}>💡 有利F {item.plusF} の連携候補:</div>
@@ -196,7 +200,7 @@ export default function App() {
                 </div>
                 <div style={{marginTop:'8px', display:'flex', gap:'5px'}}>{LOCATIONS.map(loc => <button key={loc} onClick={() => updateList('charSetplays', myChar.id, idx, 'location', loc, {})} style={{...miniBtnStyle, flex:1, background: item.location === loc ? '#0ff' : '#333', color: item.location === loc ? '#000' : '#fff'}}>{loc}</button>)}</div>
                 <div style={{marginTop:'8px'}}><label style={miniLabel}>セットプレイ内容</label><input style={comboInput} value={item.setup || ''} onFocus={() => setFocusField({type:'list', listKey:'charSetplays', charId:myChar.id, index:idx, field:'setup'})} onChange={e => updateList('charSetplays', myChar.id, idx, 'setup', e.target.value)} /></div>
-                <div style={{marginTop:'5px'}}><label style={miniLabel}>備考 (持続重ね等)</label><input style={{...comboInput, fontSize:'10px', color:'#888'}} value={item.note || ''} onChange={e => updateList('charSetplays', myChar.id, idx, 'note', e.target.value)} /></div>
+                <div style={{marginTop:'5px'}}><label style={miniLabel}>備考</label><input style={{...comboInput, fontSize:'10px', color:'#888'}} value={item.note || ''} onChange={e => updateList('charSetplays', myChar.id, idx, 'note', e.target.value)} /></div>
               </div>
             ))}
           </div>
@@ -205,7 +209,7 @@ export default function App() {
             <div style={sectionTitle}>⚔️ コンボ集中練習リスト</div>
             {trainingList.map((item, idx) => (
               <div key={idx} style={trainingCard}>
-                <div style={{color:'#f44', fontSize:'10px'}}>成功率: {item.successRate}% | 難易度: {"★".repeat(item.difficulty)}</div>
+                <div style={{color:'#f44', fontSize:'10px'}}>成功率: {item.successRate}%</div>
                 <div style={{color:'#fff', fontSize:'12px', fontWeight:'bold'}}>{item.start} (DMG: {item.dmg})</div>
                 <div style={{color:'#0ff', fontSize:'11px'}}>{item.content}</div>
               </div>
@@ -246,5 +250,3 @@ const sectionTitle = { fontSize:'11px', color:'#fc0', marginBottom:'8px', fontWe
 const trainingCard = { background:'#1a1a1a', padding:'8px', borderRadius:'6px', marginBottom:'8px', borderLeft:'3px solid #f44' };
 const mainTextAreaStyle = { width:'100%', height:'250px', background:'#000', color:'#eee', padding:'10px', border:'1px solid #333', borderRadius:'8px' };
 const floatingSFBuff = { position:'fixed', bottom:'20px', right:'20px', background:'#0ff', color:'#000', padding:'8px 15px', borderRadius:'20px', fontSize:'11px', fontWeight:'bold', textDecoration:'none', boxShadow:'0 0 10px #0ff' };
-const miniSelect = { background:'#222', color:'#fc0', border:'1px solid #444', fontSize:'10px' };
-const comboRow = { display:'flex', gap:'10px' };
