@@ -114,7 +114,8 @@ export default function App() {
           </select>
         </div>
         <div style={{display:'flex', gap:'4px'}}>
-          <button onClick={() => navigator.clipboard.writeText(JSON.stringify(data)).then(() => alert("保存"))} style={backupBtnStyle}>💾</button>
+          <button onClick={() => navigator.clipboard.writeText(JSON.stringify(data)).then(() => alert("保存しました"))} style={backupBtnStyle}>💾</button>
+          <button onClick={() => { const input = prompt("バックアップを貼り付け"); if (input) { try { JSON.parse(input); localStorage.setItem(STORAGE_KEY, input); window.location.reload(); } catch(e){ alert("形式エラー"); } } }} style={restoreBtnStyle}>📥</button>
         </div>
       </header>
 
@@ -214,6 +215,7 @@ const headerStyle = { display:'flex', justifyContent:'space-between', padding:'1
 const nameInputStyle = { width:'80px', background:'#000', color:'#fff', border:'1px solid #444', fontSize:'10px', borderRadius:'4px', padding:'2px 5px' };
 const selectStyle = { background:'#000', color:'#0ff', border:'1px solid #0ff', borderRadius:'4px', fontSize:'10px' };
 const backupBtnStyle = { background:'#222', color:'#0ff', border:'1px solid #0ff', borderRadius:'4px', padding:'3px 6px' };
+const restoreBtnStyle = { background:'#222', color:'#fc0', border:'1px solid #fc0', borderRadius:'4px', padding:'3px 6px' };
 const charNavStyle = { display:'flex', overflowX:'auto', padding:'10px', gap:'12px', background:'#000', borderBottom:'1px solid #222' };
 const charItemStyle = { display:'flex', flexDirection:'column', alignItems:'center', minWidth:'45px' };
 const iconBox = { width:'40px', height:'40px', borderRadius:'5px', overflow:'hidden' };
@@ -236,4 +238,3 @@ const sectionTitle = { fontSize:'12px', color:'#fc0', marginBottom:'10px', fontW
 const trainingCard = { background:'#1a1a1a', padding:'10px', borderRadius:'6px', marginBottom:'8px', borderLeft:'3px solid #f44' };
 const mainTextAreaStyle = { width:'100%', height:'200px', background:'#000', color:'#eee', padding:'10px', borderRadius:'8px', border:'1px solid #333' };
 const comboRow = { display:'flex', gap:'10px' };
-const restoreBtnStyle = { background:'#222', color:'#fc0', border:'1px solid #fc0', borderRadius:'4px', padding:'3px 6px' };
