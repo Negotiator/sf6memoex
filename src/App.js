@@ -102,8 +102,6 @@ export default function App() {
 
   const currentCharData = data[selectedChar.id] || {};
   const comboList = (data.charCombos && data.charCombos[myChar.id]) || [{start:'', content:'', hitType:'通常', situation:'', location:'中央', difficulty:1, successRate:100}];
-  
-  // 成功率80%未満のコンボを抽出
   const trainingList = comboList.filter(c => c.content && (parseInt(c.successRate) || 0) < 80);
 
   return (
@@ -117,7 +115,6 @@ export default function App() {
         </div>
         <div style={{display:'flex', gap:'4px'}}>
           <button onClick={() => navigator.clipboard.writeText(JSON.stringify(data)).then(() => alert("保存"))} style={backupBtnStyle}>💾</button>
-          <button onClick={() => { const input = prompt("インポート"); if (input) { try { JSON.parse(input); localStorage.setItem(STORAGE_KEY, input); window.location.reload(); } catch(e){} } }} style={restoreBtnStyle}>📥</button>
         </div>
       </header>
 
@@ -125,7 +122,7 @@ export default function App() {
         {CHARACTERS.map(c => (
           <div key={c.id} onClick={() => setSelectedChar(c)} style={{...charItemStyle, opacity: selectedChar.id === c.id ? 1 : 0.4}}>
             <div style={{...iconBox, border: selectedChar.id === c.id ? '2px solid #0ff' : '1px solid #444'}}>
-              <img src={`/${c.id}.png`} alt="" style={{width:'100%', height:'100%', objectFit:'cover'}} />
+              <img src={`/${c.id}.png`} alt="" style={{width:'100%', height:'100%', objectFit:'cover'}} onError={(e) => { e.target.style.display='none'; e.target.parentElement.innerHTML=`<div style="font-size:10px;text-align:center;line-height:40px">${c.name[0]}</div>` }} />
             </div>
             <div style={{fontSize:'8px', color: selectedChar.id === c.id ? '#0ff' : '#888', marginTop:'2px'}}>{c.name}</div>
           </div>
@@ -163,6 +160,14 @@ export default function App() {
           <div>
             {comboList.map((item, idx) => (
               <div key={idx} style={comboCardStyle}>
+                <div style={{display:'flex', justifyContent:'space-between', marginBottom:'8px', flexWrap:'wrap', gap:'5px'}}>
+                   <div style={{display:'flex', gap:'3px'}}>
+                     {HIT_TYPES.map(ht => <button key={ht} onClick={() => updateCombo(idx, 'hitType', ht)} style={{...miniBtnStyle, background: item.hitType === ht ? '#f44' : '#333'}}>{ht}</button>)}
+                   </div>
+                   <div style={{display:'flex', gap:'3px'}}>
+                     {LOCATIONS.map(loc => <button key={loc} onClick={() => updateCombo(idx, 'location', loc)} style={{...miniBtnStyle, background: item.location === loc ? '#0ff' : '#333', color: item.location === loc ? '#000' : '#fff'}}>{loc}</button>)}
+                   </div>
+                </div>
                 <div style={{display:'flex', justifyContent:'space-between', marginBottom:'8px'}}>
                   <select value={item.difficulty || 1} onChange={e => updateCombo(idx, 'difficulty', e.target.value)} style={miniSelect}>
                     {[1,2,3,4,5].map(n => <option key={n} value={n}>{"★".repeat(n)}</option>)}
@@ -183,12 +188,13 @@ export default function App() {
             <div style={sectionTitle}>⚔️ コンボ集中練習リスト (成功率80%未満)</div>
             {trainingList.length > 0 ? trainingList.map((item, idx) => (
               <div key={idx} style={trainingCard}>
-                <div style={{display:'flex', justifyContent:'space-between', fontSize:'10px', color:'#888'}}>
-                  <span>難易度: {"★".repeat(item.difficulty || 1)}</span>
-                  <span style={{color: '#f44'}}>現在: {item.successRate}%</span>
+                <div style={{display:'flex', justifyContent:'space-between', fontSize:'10px'}}>
+                  <span style={{color:'#fc0'}}>難易度: {"★".repeat(item.difficulty || 1)}</span>
+                  <span style={{color: '#f44'}}>成功率: {item.successRate}%</span>
                 </div>
                 <div style={{color:'#fff', fontSize:'12px', fontWeight:'bold', marginTop:'5px'}}>{item.start}</div>
                 <div style={{color:'#0ff', fontSize:'11px', marginTop:'3px'}}>{item.content}</div>
+                <div style={{color:'#888', fontSize:'9px', marginTop:'3px'}}>{item.hitType} / {item.location}</div>
               </div>
             )) : <div style={{textAlign:'center', color:'#888', marginTop:'20px'}}>完璧です！練習が必要なコンボはありません。</div>}
             
@@ -208,7 +214,6 @@ const headerStyle = { display:'flex', justifyContent:'space-between', padding:'1
 const nameInputStyle = { width:'80px', background:'#000', color:'#fff', border:'1px solid #444', fontSize:'10px', borderRadius:'4px', padding:'2px 5px' };
 const selectStyle = { background:'#000', color:'#0ff', border:'1px solid #0ff', borderRadius:'4px', fontSize:'10px' };
 const backupBtnStyle = { background:'#222', color:'#0ff', border:'1px solid #0ff', borderRadius:'4px', padding:'3px 6px' };
-const restoreBtnStyle = { background:'#222', color:'#fc0', border:'1px solid #fc0', borderRadius:'4px', padding:'3px 6px' };
 const charNavStyle = { display:'flex', overflowX:'auto', padding:'10px', gap:'12px', background:'#000', borderBottom:'1px solid #222' };
 const charItemStyle = { display:'flex', flexDirection:'column', alignItems:'center', minWidth:'45px' };
 const iconBox = { width:'40px', height:'40px', borderRadius:'5px', overflow:'hidden' };
@@ -221,6 +226,7 @@ const tabBtnStyle = { flex:1, padding:'8px 0', border:'1px solid #333', fontSize
 const paletteStyle = { display:'flex', flexWrap:'wrap', gap:'4px', background:'#111', padding:'8px', borderRadius:'8px', marginBottom:'10px' };
 const cmdBtnStyle = { background:'#333', color:'#fff', border:'none', padding:'5px 8px', borderRadius:'4px', fontSize:'11px' };
 const comboCardStyle = { background:'#111', padding:'10px', borderRadius:'8px', marginBottom:'10px', border:'1px solid #333' };
+const miniBtnStyle = { border:'none', color:'#fff', fontSize:'8px', padding:'2px 5px', borderRadius:'3px' };
 const miniSelect = { background:'#222', color:'#fc0', border:'1px solid #444', fontSize:'10px', borderRadius:'3px' };
 const rateInput = { width:'40px', background:'#000', color:'#f44', border:'1px solid #444', textAlign:'center', fontSize:'12px' };
 const comboInput = { width:'100%', background:'#000', color:'#fff', border:'1px solid #444', padding:'5px', fontSize:'12px' };
@@ -230,3 +236,4 @@ const sectionTitle = { fontSize:'12px', color:'#fc0', marginBottom:'10px', fontW
 const trainingCard = { background:'#1a1a1a', padding:'10px', borderRadius:'6px', marginBottom:'8px', borderLeft:'3px solid #f44' };
 const mainTextAreaStyle = { width:'100%', height:'200px', background:'#000', color:'#eee', padding:'10px', borderRadius:'8px', border:'1px solid #333' };
 const comboRow = { display:'flex', gap:'10px' };
+const restoreBtnStyle = { background:'#222', color:'#fc0', border:'1px solid #fc0', borderRadius:'4px', padding:'3px 6px' };
