@@ -30,7 +30,7 @@ const TABS = [
   { id: 'battle', label: '実戦', icon: '⚔️' },
 ];
 
-const STORAGE_KEY = 'sf6_master_data_v8';
+const STORAGE_KEY = 'sf6_master_data_v9';
 
 export default function App() {
   const [selectedChar, setSelectedChar] = useState(CHARACTERS[0]);
@@ -99,6 +99,35 @@ export default function App() {
     }
   };
 
+  const generateAIPrompt = () => {
+    const habits = (data.badHabits || []).map(h => `・NG: ${h.ng} ➔ 改善: ${h.solution}`).join('\n');
+    const strat = data[selectedChar.id]?.strategy || '未入力';
+    const prompt = `
+あなたは格闘ゲーム「ストリートファイター6」のプロコーチです。
+私のプレイデータに基づき、次の対戦に向けたアドバイスをください。
+
+【私の使用キャラ】: ${myChar.name} (${controlType === 'C' ? 'クラシック' : 'モダン'})
+【対戦相手キャラ】: ${selectedChar.name}
+
+【現在の私の悪癖と改善案】:
+${habits}
+
+【対${selectedChar.name}戦のメモ】:
+${strat}
+
+上記を踏まえ、実戦で意識すべきポイント3点と、このキャラに勝つための具体的な立ち回りを、初心者にもわかりやすく、かつ論理的に解説してください。`;
+    
+    navigator.clipboard.writeText(prompt.trim()).then(() => alert("AI用プロンプトをコピーしました！"));
+  };
+
+  const getYTLink = () => {
+    let query = `スト6 ${selectedChar.name} 対策`;
+    if (activeTab === 'myCombo') query = `スト6 ${myChar.name} コンボ ${controlType === 'C' ? 'クラシック' : 'モダン'}`;
+    if (activeTab === 'setplay') query = `スト6 ${myChar.name} セットプレイ`;
+    if (activeTab === 'badHabits') query = `スト6 NG行動 勝ち方`;
+    return `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
+  };
+
   const currentCharData = data[selectedChar.id] || {};
   const comboList = data.charCombos?.[myChar.id] || [{start:'', content:'', hitType:'通常', location:'中央', difficulty:1, successRate:100, dmg:'', plusF:''}];
   const setplayList = data.charSetplays?.[myChar.id] || [{finisher:'', location:'中央', plusF:'', setup:'', note:''}];
@@ -144,17 +173,11 @@ export default function App() {
                 <input style={winInput} value={newWinRate} onChange={e => setNewWinRate(e.target.value)} placeholder="%" type="number" />
                 <button onClick={() => { if(!newWinRate) return; updateChar('winRateRecords', [{ id: Date.now(), rate: parseFloat(newWinRate) }, ...(currentCharData.winRateRecords || [])].slice(0, 10)); setNewWinRate(''); }} style={saveBtnStyle}>記録</button>
               </div>
-              <div style={{height:'35px', marginTop:'5px'}}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={[...(currentCharData.winRateRecords || [])].reverse()}>
-                    <Line type="monotone" dataKey="rate" stroke="#0ff" dot={{r:2}} isAnimationActive={false} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
+              <div style={{height:'35px', marginTop:'5px'}}><ResponsiveContainer width="100%" height="100%"><LineChart data={[...(currentCharData.winRateRecords || [])].reverse()}><Line type="monotone" dataKey="rate" stroke="#0ff" dot={{r:2}} isAnimationActive={false} /></LineChart></ResponsiveContainer></div>
             </div>
             <div style={{display:'flex', flexDirection:'column', gap:'4px'}}>
               <a href={playerName ? `https://sfbuff.site/fighters/search?q=${playerName}` : "https://sfbuff.site/"} target="_blank" rel="noreferrer" style={linkBtn('#0ff')}>SFBuff</a>
-              <a href={`https://www.youtube.com/results?search_query=スト6+${activeTab === 'myCombo' ? `${myChar.name}+${controlType === 'C' ? 'クラシック' : 'モダン'}` : `${selectedChar.name}+対策`}`} target="_blank" rel="noreferrer" style={linkBtn('#f00')}>YouTube</a>
+              <a href={getYTLink()} target="_blank" rel="noreferrer" style={linkBtn('#f00')}>YouTube</a>
             </div>
           </div>
         )}
@@ -174,54 +197,48 @@ export default function App() {
         )}
 
         {activeTab === 'myCombo' ? (
-          <div>
-            {comboList.map((item, idx) => (
-              <div key={idx} style={comboCardStyle}>
-                <div style={{display:'flex', justifyContent:'space-between', marginBottom:'8px'}}>
-                  <div style={{display:'flex', gap:'3px'}}>{HIT_TYPES.map(ht => <button key={ht} onClick={() => updateList('charCombos', myChar.id, idx, 'hitType', ht, {})} style={{...miniBtnStyle, background: item.hitType === ht ? '#f44' : '#333'}}>{ht}</button>)}</div>
-                  <div style={{display:'flex', gap:'3px'}}>{LOCATIONS.map(loc => <button key={loc} onClick={() => updateList('charCombos', myChar.id, idx, 'location', loc, {})} style={{...miniBtnStyle, background: item.location === loc ? '#0ff' : '#333', color: item.location === loc ? '#000' : '#fff'}}>{loc}</button>)}</div>
-                </div>
-                <div style={inputGrid}>
-                   <div><label style={miniLabel}>始動</label><input style={comboInput} value={item.start || ''} onFocus={() => setFocusField({type:'list', listKey:'charCombos', charId:myChar.id, index:idx, field:'start', default:item})} onChange={e => updateList('charCombos', myChar.id, idx, 'start', e.target.value)} /></div>
-                   <div><label style={miniLabel}>DMG</label><input style={comboInput} type="number" value={item.dmg || ''} onChange={e => updateList('charCombos', myChar.id, idx, 'dmg', e.target.value)} /></div>
-                   <div><label style={miniLabel}>有利F</label><input style={{...comboInput, color:'#0f0'}} type="number" value={item.plusF || ''} onChange={e => updateList('charCombos', myChar.id, idx, 'plusF', e.target.value)} /></div>
-                </div>
-                <div style={{marginTop:'5px'}}><label style={miniLabel}>レシピ</label><textarea style={comboArea} value={item.content || ''} onFocus={() => setFocusField({type:'list', listKey:'charCombos', charId:myChar.id, index:idx, field:'content', default:item})} onChange={e => updateList('charCombos', myChar.id, idx, 'content', e.target.value)} /></div>
-                <div style={{display:'flex', gap:'10px', marginTop:'5px'}}>
-                   <div style={{flex:1}}><label style={miniLabel}>成功率(%)</label><input type="number" style={comboInput} value={item.successRate || 0} onChange={e => updateList('charCombos', myChar.id, idx, 'successRate', e.target.value)} /></div>
-                   <div style={{flex:1}}><label style={miniLabel}>難易度</label><select value={item.difficulty || 1} onChange={e => updateList('charCombos', myChar.id, idx, 'difficulty', e.target.value)} style={comboInput}>{[1,2,3,4,5].map(n => <option key={n} value={n}>{"★".repeat(n)}</option>)}</select></div>
-                </div>
+          <div>{comboList.map((item, idx) => (
+            <div key={idx} style={comboCardStyle}>
+              <div style={{display:'flex', justifyContent:'space-between', marginBottom:'8px'}}>
+                <div style={{display:'flex', gap:'3px'}}>{HIT_TYPES.map(ht => <button key={ht} onClick={() => updateList('charCombos', myChar.id, idx, 'hitType', ht, {})} style={{...miniBtnStyle, background: item.hitType === ht ? '#f44' : '#333'}}>{ht}</button>)}</div>
+                <div style={{display:'flex', gap:'3px'}}>{LOCATIONS.map(loc => <button key={loc} onClick={() => updateList('charCombos', myChar.id, idx, 'location', loc, {})} style={{...miniBtnStyle, background: item.location === loc ? '#0ff' : '#333', color: item.location === loc ? '#000' : '#fff'}}>{loc}</button>)}</div>
               </div>
-            ))}
-          </div>
+              <div style={inputGrid}>
+                 <div><label style={miniLabel}>始動</label><input style={comboInput} value={item.start || ''} onFocus={() => setFocusField({type:'list', listKey:'charCombos', charId:myChar.id, index:idx, field:'start', default:item})} onChange={e => updateList('charCombos', myChar.id, idx, 'start', e.target.value)} /></div>
+                 <div><label style={miniLabel}>DMG</label><input style={comboInput} type="number" value={item.dmg || ''} onChange={e => updateList('charCombos', myChar.id, idx, 'dmg', e.target.value)} /></div>
+                 <div><label style={miniLabel}>有利F</label><input style={{...comboInput, color:'#0f0'}} type="number" value={item.plusF || ''} onChange={e => updateList('charCombos', myChar.id, idx, 'plusF', e.target.value)} /></div>
+              </div>
+              <div style={{marginTop:'5px'}}><label style={miniLabel}>レシピ</label><textarea style={comboArea} value={item.content || ''} onFocus={() => setFocusField({type:'list', listKey:'charCombos', charId:myChar.id, index:idx, field:'content', default:item})} onChange={e => updateList('charCombos', myChar.id, idx, 'content', e.target.value)} /></div>
+              <div style={{display:'flex', gap:'10px', marginTop:'5px'}}>
+                 <div style={{flex:1}}><label style={miniLabel}>成功率(%)</label><input type="number" style={comboInput} value={item.successRate || 0} onChange={e => updateList('charCombos', myChar.id, idx, 'successRate', e.target.value)} /></div>
+                 <div style={{flex:1}}><label style={miniLabel}>難易度</label><select value={item.difficulty || 1} onChange={e => updateList('charCombos', myChar.id, idx, 'difficulty', e.target.value)} style={comboInput}>{[1,2,3,4,5].map(n => <option key={n} value={n}>{"★".repeat(n)}</option>)}</select></div>
+              </div>
+            </div>
+          ))}</div>
         ) : activeTab === 'setplay' ? (
-          <div>
-            {setplayList.map((item, idx) => (
-              <div key={idx} style={comboCardStyle}>
-                <div style={{display:'flex', gap:'8px', marginBottom:'8px'}}>
-                   <div style={{flex:2}}><label style={miniLabel}>締めパーツ</label><input style={comboInput} value={item.finisher || ''} onFocus={() => setFocusField({type:'list', listKey:'charSetplays', charId:myChar.id, index:idx, field:'finisher', default:item})} onChange={e => updateList('charSetplays', myChar.id, idx, 'finisher', e.target.value)} /></div>
-                   <div style={{flex:1}}><label style={miniLabel}>有利F</label><input style={{...comboInput, color:'#0f0'}} type="number" value={item.plusF || ''} onChange={e => updateList('charSetplays', myChar.id, idx, 'plusF', e.target.value)} /></div>
-                </div>
-                <textarea style={{...comboArea, height:'40px'}} placeholder="連携レシピ..." value={item.setup || ''} onFocus={() => setFocusField({type:'list', listKey:'charSetplays', charId:myChar.id, index:idx, field:'setup', default:item})} onChange={e => updateList('charSetplays', myChar.id, idx, 'setup', e.target.value)} />
+          <div>{setplayList.map((item, idx) => (
+            <div key={idx} style={comboCardStyle}>
+              <div style={{display:'flex', gap:'8px', marginBottom:'8px'}}>
+                 <div style={{flex:2}}><label style={miniLabel}>締めパーツ</label><input style={comboInput} value={item.finisher || ''} onFocus={() => setFocusField({type:'list', listKey:'charSetplays', charId:myChar.id, index:idx, field:'finisher', default:item})} onChange={e => updateList('charSetplays', myChar.id, idx, 'finisher', e.target.value)} /></div>
+                 <div style={{flex:1}}><label style={miniLabel}>有利F</label><input style={{...comboInput, color:'#0f0'}} type="number" value={item.plusF || ''} onChange={e => updateList('charSetplays', myChar.id, idx, 'plusF', e.target.value)} /></div>
               </div>
-            ))}
-          </div>
+              <textarea style={{...comboArea, height:'40px'}} placeholder="連携レシピ..." value={item.setup || ''} onFocus={() => setFocusField({type:'list', listKey:'charSetplays', charId:myChar.id, index:idx, field:'setup', default:item})} onChange={e => updateList('charSetplays', myChar.id, idx, 'setup', e.target.value)} />
+            </div>
+          ))}</div>
         ) : activeTab === 'badHabits' ? (
-          <div>
-            {habitsList.map((item, idx) => (
-              <div key={idx} style={{...comboCardStyle, borderLeft:'4px solid #f44'}}>
-                <div><label style={{...miniLabel, color:'#f44'}}>NG行動</label><input style={comboInput} value={item.ng || ''} onChange={e => {
-                  const newList = [...habitsList]; newList[idx].ng = e.target.value; 
-                  if(newList[newList.length-1].ng) newList.push({ng:'', solution:''});
-                  updateMyData('badHabits', newList);
-                }} /></div>
-                <div style={{marginTop:'5px'}}><label style={{...miniLabel, color:'#0f0'}}>改善・意識</label><input style={comboInput} value={item.solution || ''} onChange={e => {
-                  const newList = [...habitsList]; newList[idx].solution = e.target.value;
-                  updateMyData('badHabits', newList);
-                }} /></div>
-              </div>
-            ))}
-          </div>
+          <div>{habitsList.map((item, idx) => (
+            <div key={idx} style={{...comboCardStyle, borderLeft:'4px solid #f44'}}>
+              <div><label style={{...miniLabel, color:'#f44'}}>NG行動</label><input style={comboInput} value={item.ng || ''} onChange={e => {
+                const newList = [...habitsList]; newList[idx].ng = e.target.value; 
+                if(newList[newList.length-1].ng) newList.push({ng:'', solution:''});
+                updateMyData('badHabits', newList);
+              }} /></div>
+              <div style={{marginTop:'5px'}}><label style={{...miniLabel, color:'#0f0'}}>改善・意識</label><input style={comboInput} value={item.solution || ''} onChange={e => {
+                const newList = [...habitsList]; newList[idx].solution = e.target.value;
+                updateMyData('badHabits', newList);
+              }} /></div>
+            </div>
+          ))}</div>
         ) : activeTab === 'training' ? (
           <div>
             <div style={sectionTitle}>⚔️ トレモ課題 (成功率80%未満)</div>
@@ -251,6 +268,7 @@ export default function App() {
                 <div key={i} style={battleItem}><span style={{color:'#fc0'}}>[+{s.plusF}F]</span> {s.setup}</div>
               ))}
             </div>
+            <button onClick={generateAIPrompt} style={aiPromptBtn}>✨ NotebookLM用プロンプト生成</button>
           </div>
         ) : (
           <textarea style={mainTextAreaStyle} value={currentCharData[activeTab] || ''} onFocus={() => setFocusField({type:'main', field:activeTab})} onChange={e => updateChar(activeTab, e.target.value)} />
@@ -291,3 +309,4 @@ const battleItem = { fontSize:'12px', marginBottom:'6px', borderBottom:'1px dott
 const sectionTitle = { fontSize:'11px', color:'#fc0', marginBottom:'8px', fontWeight:'bold' };
 const trainingCard = { background:'#1a1a1a', padding:'8px', borderRadius:'6px', marginBottom:'8px', borderLeft:'3px solid #f44' };
 const mainTextAreaStyle = { width:'100%', height:'250px', background:'#000', color:'#eee', padding:'10px', border:'1px solid #333', borderRadius:'8px' };
+const aiPromptBtn = { background: 'linear-gradient(45deg, #7000ff, #00d4ff)', color: '#fff', border: 'none', padding: '12px', borderRadius: '8px', fontWeight: 'bold', marginTop: '10px', cursor: 'pointer' };
