@@ -30,7 +30,7 @@ const TABS = [
   { id: 'battle', label: '実戦', icon: '⚔️' },
 ];
 
-const STORAGE_KEY = 'sf6_master_data_v9';
+const STORAGE_KEY = 'sf6_master_data_v10';
 
 export default function App() {
   const [selectedChar, setSelectedChar] = useState(CHARACTERS[0]);
@@ -99,32 +99,34 @@ export default function App() {
     }
   };
 
-  const generateAIPrompt = () => {
-    const habits = (data.badHabits || []).map(h => `・NG: ${h.ng} ➔ 改善: ${h.solution}`).join('\n');
-    const strat = data[selectedChar.id]?.strategy || '未入力';
-    const prompt = `
-あなたは格闘ゲーム「ストリートファイター6」のプロコーチです。
-私のプレイデータに基づき、次の対戦に向けたアドバイスをください。
-
-【私の使用キャラ】: ${myChar.name} (${controlType === 'C' ? 'クラシック' : 'モダン'})
-【対戦相手キャラ】: ${selectedChar.name}
-
-【現在の私の悪癖と改善案】:
-${habits}
-
-【対${selectedChar.name}戦のメモ】:
-${strat}
-
-上記を踏まえ、実戦で意識すべきポイント3点と、このキャラに勝つための具体的な立ち回りを、初心者にもわかりやすく、かつ論理的に解説してください。`;
+  const copyPrompt = () => {
+    let prompt = "";
+    const base = `あなたはSF6の高度なコーチです。自キャラ:${myChar.name}(${controlType === 'C' ? 'クラシック' : 'モダン'})。`;
     
-    navigator.clipboard.writeText(prompt.trim()).then(() => alert("AI用プロンプトをコピーしました！"));
+    switch(activeTab) {
+      case 'strategy':
+        prompt = `${base}敵キャラ:${selectedChar.name}。\n【最優先：敵キャラ対策の抽出】\nこの動画から、対敵キャラにおける立ち回り対策を抽出してください。\n\n・立ち回りの重要ポイント（要約）\n・主要な技への対処法や反撃ポイント\n\nこれらをアプリの「対策」欄に貼れるよう、簡潔な箇条書きでまとめてください。\n※前置き不要、内容のみ出力してください。`;
+        break;
+      case 'myCombo':
+        prompt = `${base}\n【最優先：実戦コンボの抽出】\nこの動画から実戦で使えるコンボを抽出してください。\n\n・形式：[始動技] ➔ [レシピ]\n・レシピ内は「 > 」で繋ぎ、DR, PC, OD, SA1~3などの略称を使用してください。\n\nそのままアプリに貼れるよう、余計な解説を省いて出力してください。`;
+        break;
+      case 'setplay':
+        prompt = `${base}\n【最優先：セットプレイ・連携の抽出】\nこの動画から強力な起き攻めや連携を抽出してください。\n\n・形式：[締めパーツ] 有利F：[数字]F ➔ [連携内容]\n\n簡潔に内容のみ出力してください。`;
+        break;
+      case 'badHabits':
+        prompt = `あなたはSF6の高度なコーチです。初心者〜中級者がやりがちな「負け筋」を分析します。\n【最優先：NG行動と改善策の抽出】\nこの動画（または一般的な${myChar.name}の負けパターン）から、改善すべき行動を抽出してください。\n\n・NG行動: [やってはいけない事]\n・改善法: [どうすべきか]\n\n各項目1行で、箇条書きで出力してください。`;
+        break;
+      default:
+        prompt = `${base}動画の内容を要約してください。`;
+    }
+    navigator.clipboard.writeText(prompt).then(() => alert("タブ専用プロンプトをコピーしました！"));
   };
 
   const getYTLink = () => {
     let query = `スト6 ${selectedChar.name} 対策`;
     if (activeTab === 'myCombo') query = `スト6 ${myChar.name} コンボ ${controlType === 'C' ? 'クラシック' : 'モダン'}`;
-    if (activeTab === 'setplay') query = `スト6 ${myChar.name} セットプレイ`;
-    if (activeTab === 'badHabits') query = `スト6 NG行動 勝ち方`;
+    if (activeTab === 'setplay') query = `スト6 ${myChar.name} セットプレイ 連携`;
+    if (activeTab === 'badHabits') query = `スト6 勝ち方 NG行動 意識`;
     return `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
   };
 
@@ -149,7 +151,7 @@ ${strat}
           </div>
         </div>
         <div style={{display:'flex', gap:'4px'}}>
-          <button onClick={() => navigator.clipboard.writeText(JSON.stringify(data)).then(() => alert("コピーしました"))} style={backupBtnStyle}>💾</button>
+          <button onClick={() => navigator.clipboard.writeText(JSON.stringify(data)).then(() => alert("コピー"))} style={backupBtnStyle}>💾</button>
           <button onClick={() => { const i = prompt("復元データを貼り付け"); if(i){ try{ JSON.parse(i); localStorage.setItem(STORAGE_KEY, i); window.location.reload(); }catch(e){alert("ERROR")}} }} style={restoreBtnStyle}>📥</button>
         </div>
       </header>
@@ -176,8 +178,11 @@ ${strat}
               <div style={{height:'35px', marginTop:'5px'}}><ResponsiveContainer width="100%" height="100%"><LineChart data={[...(currentCharData.winRateRecords || [])].reverse()}><Line type="monotone" dataKey="rate" stroke="#0ff" dot={{r:2}} isAnimationActive={false} /></LineChart></ResponsiveContainer></div>
             </div>
             <div style={{display:'flex', flexDirection:'column', gap:'4px'}}>
+              <div style={{display:'flex', gap:'2px'}}>
+                <a href={getYTLink()} target="_blank" rel="noreferrer" style={linkBtn('#f00')}>YouTube</a>
+                <button onClick={copyPrompt} style={{...linkBtn('#fc0'), background:'transparent', cursor:'pointer'}}>✨ AIプロンプト</button>
+              </div>
               <a href={playerName ? `https://sfbuff.site/fighters/search?q=${playerName}` : "https://sfbuff.site/"} target="_blank" rel="noreferrer" style={linkBtn('#0ff')}>SFBuff</a>
-              <a href={getYTLink()} target="_blank" rel="noreferrer" style={linkBtn('#f00')}>YouTube</a>
             </div>
           </div>
         )}
@@ -209,10 +214,6 @@ ${strat}
                  <div><label style={miniLabel}>有利F</label><input style={{...comboInput, color:'#0f0'}} type="number" value={item.plusF || ''} onChange={e => updateList('charCombos', myChar.id, idx, 'plusF', e.target.value)} /></div>
               </div>
               <div style={{marginTop:'5px'}}><label style={miniLabel}>レシピ</label><textarea style={comboArea} value={item.content || ''} onFocus={() => setFocusField({type:'list', listKey:'charCombos', charId:myChar.id, index:idx, field:'content', default:item})} onChange={e => updateList('charCombos', myChar.id, idx, 'content', e.target.value)} /></div>
-              <div style={{display:'flex', gap:'10px', marginTop:'5px'}}>
-                 <div style={{flex:1}}><label style={miniLabel}>成功率(%)</label><input type="number" style={comboInput} value={item.successRate || 0} onChange={e => updateList('charCombos', myChar.id, idx, 'successRate', e.target.value)} /></div>
-                 <div style={{flex:1}}><label style={miniLabel}>難易度</label><select value={item.difficulty || 1} onChange={e => updateList('charCombos', myChar.id, idx, 'difficulty', e.target.value)} style={comboInput}>{[1,2,3,4,5].map(n => <option key={n} value={n}>{"★".repeat(n)}</option>)}</select></div>
-              </div>
             </div>
           ))}</div>
         ) : activeTab === 'setplay' ? (
@@ -248,19 +249,19 @@ ${strat}
                 <div style={{color:'#f44', fontSize:'10px'}}>成功率: {item.successRate}%</div>
               </div>
             ))}
-            <textarea style={mainTextAreaStyle} value={currentCharData.trainingNote || ''} onChange={e => updateChar('trainingNote', e.target.value)} placeholder="自由な練習課題メモ..." />
+            <textarea style={mainTextAreaStyle} value={currentCharData.trainingNote || ''} onChange={e => updateChar('trainingNote', e.target.value)} placeholder="自由な練習メモ..." />
           </div>
         ) : activeTab === 'battle' ? (
           <div style={{display:'flex', flexDirection:'column', gap:'10px'}}>
             <div style={battleSection}>
-              <div style={battleHeader}>🚫 NG & 改善（全キャラ共通）</div>
+              <div style={battleHeader}>🚫 NG & 改善</div>
               {habitsList.filter(b => b.ng).map((b, i) => (
                 <div key={i} style={battleItem}><span style={{color:'#f44'}}>✕ {b.ng}</span> ➔ <span style={{color:'#0f0'}}>{b.solution}</span></div>
               ))}
             </div>
             <div style={battleSection}>
               <div style={battleHeader}>🧠 {selectedChar.name} 対策</div>
-              <div style={{whiteSpace:'pre-wrap', fontSize:'12px', color:'#eee'}}>{currentCharData.strategy || '対策メモなし'}</div>
+              <div style={{whiteSpace:'pre-wrap', fontSize:'12px', color:'#eee'}}>{currentCharData.strategy || '未入力'}</div>
             </div>
             <div style={battleSection}>
               <div style={battleHeader}>⚡ {myChar.name} 連携</div>
@@ -268,7 +269,6 @@ ${strat}
                 <div key={i} style={battleItem}><span style={{color:'#fc0'}}>[+{s.plusF}F]</span> {s.setup}</div>
               ))}
             </div>
-            <button onClick={generateAIPrompt} style={aiPromptBtn}>✨ NotebookLM用プロンプト生成</button>
           </div>
         ) : (
           <textarea style={mainTextAreaStyle} value={currentCharData[activeTab] || ''} onFocus={() => setFocusField({type:'main', field:activeTab})} onChange={e => updateChar(activeTab, e.target.value)} />
@@ -292,7 +292,7 @@ const iconBox = { width:'38px', height:'38px', borderRadius:'4px', overflow:'hid
 const winRowStyle = { display:'flex', gap:'10px', background:'#111', padding:'8px', borderRadius:'8px', marginBottom:'10px', alignItems:'center' };
 const winInput = { width:'40px', background:'#000', color:'#0f0', border:'1px solid #444', padding:'4px', fontSize:'12px' };
 const saveBtnStyle = { background:'#0ff', border:'none', borderRadius:'3px', fontSize:'10px', padding:'2px 8px' };
-const linkBtn = (c) => ({ color:c, border:`1px solid ${c}`, padding:'3px 8px', borderRadius:'4px', fontSize:'10px', textDecoration:'none', textAlign:'center' });
+const linkBtn = (c) => ({ color:c, border:`1px solid ${c}`, padding:'3px 8px', borderRadius:'4px', fontSize:'10px', textDecoration:'none', textAlign:'center', display:'inline-block' });
 const tabGroupStyle = { display:'flex', gap:'2px', marginBottom:'10px' };
 const tabBtnStyle = { flex:1, padding:'10px 0', border:'1px solid #333', fontSize:'10px' };
 const paletteStyle = { display:'flex', flexWrap:'wrap', gap:'3px', background:'#111', padding:'8px', borderRadius:'8px', marginBottom:'10px' };
@@ -309,4 +309,3 @@ const battleItem = { fontSize:'12px', marginBottom:'6px', borderBottom:'1px dott
 const sectionTitle = { fontSize:'11px', color:'#fc0', marginBottom:'8px', fontWeight:'bold' };
 const trainingCard = { background:'#1a1a1a', padding:'8px', borderRadius:'6px', marginBottom:'8px', borderLeft:'3px solid #f44' };
 const mainTextAreaStyle = { width:'100%', height:'250px', background:'#000', color:'#eee', padding:'10px', border:'1px solid #333', borderRadius:'8px' };
-const aiPromptBtn = { background: 'linear-gradient(45deg, #7000ff, #00d4ff)', color: '#fff', border: 'none', padding: '12px', borderRadius: '8px', fontWeight: 'bold', marginTop: '10px', cursor: 'pointer' };
