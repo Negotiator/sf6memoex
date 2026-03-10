@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { LineChart, Line, ResponsiveContainer } from 'recharts';
 
 /**
- * IMPORTANT: To fix the "@google/generative-ai" not found error, 
- * we will use a direct fetch approach to the Gemini API. 
- * This removes the need for the external SDK and prevents build failures on Vercel.
+ * 修正ポイント:
+ * 1. Vercelの環境変数 (VITE_GEMINI_API_KEY) の読み込みロジックを強化
+ * 2. 環境変数が空の場合、ユーザーに直接入力を促すフォールバックを追加
+ * 3. 外部ライブラリ不要の直接APIコール方式を維持
  */
 
 const CHARACTERS = [
@@ -112,15 +113,23 @@ export default function App() {
   };
 
   /**
-   * Safe Environment Variable Access
+   * APIキー取得ロジックの改善
    */
   const getApiKey = () => {
+    let key = "";
     try {
+      // 1. Viteの環境変数を確認
       // @ts-ignore
-      return (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GEMINI_API_KEY) || "";
+      key = import.meta.env.VITE_GEMINI_API_KEY;
     } catch (e) {
-      return "";
+      // Ignore
     }
+    
+    // 2. localStorageに手動保存されたキーがあれば優先（デバッグ用）
+    const manualKey = localStorage.getItem('SF6_MANUAL_API_KEY');
+    if (manualKey) return manualKey;
+
+    return key || "";
   };
 
   const handleAIAnalysis = async () => {
@@ -135,11 +144,18 @@ export default function App() {
       }
     }
 
-    const apiKey = getApiKey();
+    let apiKey = getApiKey();
     
+    // Vercelの設定が反映されていない場合の緊急避難
     if (!apiKey) {
-      alert("APIキーが設定されていません。Vercelの環境変数(VITE_GEMINI_API_KEY)を確認してください。");
-      return;
+      const inputKey = prompt("Vercelの環境変数が読み込めません。Gemini APIキーを直接入力してください（このブラウザにのみ保存されます）");
+      if (inputKey) {
+        localStorage.setItem('SF6_MANUAL_API_KEY', inputKey);
+        apiKey = inputKey;
+      } else {
+        alert("APIキーが必要です。VercelのSettings > Environment Variables で VITE_GEMINI_API_KEY を設定し、再デプロイしてください。");
+        return;
+      }
     }
 
     const rawText = prompt("解析したいテキスト（動画の書き起こしやメモなど）を貼り付けてください");
@@ -147,28 +163,39 @@ export default function App() {
 
     setIsAnalyzing(true);
     try {
-      const systemPrompt = `SF6高度コーチとして、提供されたテキストから有用な情報を抽出してください。
-        必ず有効なJSON形式で返してください。
-        "strategy": 敵(${selectedChar.name})対策を日本語の箇条書きテキストとして
-        "combos": 自キャラ(${myChar.name})のコンボ配列 [{start: "始動技", content: "レシピ", dmg: "ダメージ(数値)"}]
-        "setplays": 自キャラ(${myChar.name})の連携配列 [{finisher: "締め技", setup: "連携内容"}]`;
+      const systemPrompt = `あなたはストリートファイター6のプロコーチです。
+      提供されたテキストから、以下の情報を抽出し、必ず純粋なJSON形式で返答してください。
+      
+      {
+        "strategy": "敵キャラ対策の要点（日本語の箇条書き）",
+        "combos": [{"start": "始動技", "content": "コンボレシピ", "dmg": "ダメージ"}],
+        "setplays": [{"finisher": "締め技", "setup": "その後の起き攻めや連携"}]
+      }
 
-      const userQuery = `解析対象テキスト: "${rawText}"`;
+      対象自キャラ: ${myChar.name}
+      対象敵キャラ: ${selectedChar.name}`;
 
-      // Use native fetch to avoid SDK dependency issues in build
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: `${systemPrompt}\n\n${userQuery}` }] }],
-          generationConfig: { responseMimeType: "application/json" }
+          contents: [{ parts: [{ text: `${systemPrompt}\n\n解析テキスト:\n${rawText}` }] }],
+          generationConfig: { 
+            responseMimeType: "application/json",
+            temperature: 0.7
+          }
         })
       });
+
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error?.message || "API request failed");
+      }
 
       const result = await response.json();
       const textResponse = result.candidates?.[0]?.content?.parts?.[0]?.text;
       
-      if (!textResponse) throw new Error("No response from AI");
+      if (!textResponse) throw new Error("AIからの応答が空でした。");
       
       const dataObj = JSON.parse(textResponse);
 
@@ -186,10 +213,10 @@ export default function App() {
         updateMyData('charSetplays', { ...data.charSetplays, [myChar.id]: [...newSetplays, ...currentSetplays] });
       }
 
-      alert("AI解析完了！");
+      alert("AI解析が完了しました！");
     } catch (e) {
       console.error(e);
-      alert("解析に失敗しました。APIキーまたはネットワークを確認してください。");
+      alert(`エラーが発生しました: ${e.message}`);
     } finally {
       setIsAnalyzing(false);
     }
