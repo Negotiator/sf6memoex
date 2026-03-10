@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { LineChart, Line, ResponsiveContainer, YAxis, XAxis, Tooltip } from 'recharts';
+import { LineChart, Line, ResponsiveContainer } from 'recharts';
 
 // --- Inline SVG Icons to replace lucide-react (Zero dependencies) ---
 const Icons = {
