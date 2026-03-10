@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { LineChart, Line, ResponsiveContainer } from 'recharts';
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
+// キャラクター定義
 const CHARACTERS = [
   { name: 'リュウ', id: 'ryu' }, { name: 'ルーク', id: 'luke' }, { name: 'ジェイミー', id: 'jamie' },
   { name: '春麗', id: 'chun-li' }, { name: 'ガイル', id: 'guile' }, { name: 'キンバリー', id: 'kimberly' },
@@ -31,6 +33,7 @@ const TABS = [
 ];
 
 const STORAGE_KEY = 'sf6_master_data_v10';
+const AUTH_KEY = 'sf6_ai_authenticated';
 
 export default function App() {
   const [selectedChar, setSelectedChar] = useState(CHARACTERS[0]);
@@ -41,6 +44,8 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('strategy');
   const [newWinRate, setNewWinRate] = useState('');
   const [focusField, setFocusField] = useState(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isAiUnlocked, setIsAiUnlocked] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -53,6 +58,9 @@ export default function App() {
       }
       if (parsed.controlType) setControlType(parsed.controlType);
       if (parsed.playerName) setPlayerName(parsed.playerName);
+    }
+    if (localStorage.getItem(AUTH_KEY) === 'true') {
+      setIsAiUnlocked(true);
     }
   }, []);
 
@@ -99,40 +107,113 @@ export default function App() {
     }
   };
 
+  const handleAIAnalysis = async () => {
+    if (!isAiUnlocked) {
+      const pw = prompt("AI機能を解放するためのパスワードを入力してください。");
+      if (pw === "sf6master") {
+        setIsAiUnlocked(true);
+        localStorage.setItem(AUTH_KEY, 'true');
+      } else {
+        alert("パスワードが違います。");
+        return;
+      }
+    }
+
+    // 環境変数の読み込みエラーを回避するため、プロセス・インポート・メタの安全なチェックを行う
+    let apiKey = "";
+    try {
+      // Vite環境での標準的な読み込み
+      apiKey = import.meta.env.VITE_GEMINI_API_KEY || "";
+    } catch (e) {
+      // Node系や旧環境でのフォールバック
+      try {
+        apiKey = process.env.VITE_GEMINI_API_KEY || "";
+      } catch (e2) {
+        apiKey = "";
+      }
+    }
+    
+    if (!apiKey) {
+      alert("APIキーが設定されていません。Vercelの環境変数(VITE_GEMINI_API_KEY)を確認してください。");
+      return;
+    }
+
+    const rawText = prompt("解析したいテキスト（動画の書き起こしやメモなど）を貼り付けてください");
+    if (!rawText) return;
+
+    setIsAnalyzing(true);
+    try {
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ 
+        model: "gemini-1.5-flash",
+        generationConfig: { responseMimeType: "application/json" } 
+      });
+
+      const promptText = `
+        SF6高度コーチとしてJSON形式で返してください。
+        "strategy": 敵(${selectedChar.name})対策を日本語の箇条書きで
+        "combos": 自キャラ(${myChar.name})のコンボ[{start, content, dmg}]
+        "setplays": 自キャラ(${myChar.name})の連携[{finisher, setup}]
+        テキスト: "${rawText}"
+      `;
+
+      const result = await model.generateContent(promptText);
+      const response = await result.response;
+      const dataObj = JSON.parse(response.text());
+
+      if (dataObj.strategy) updateChar('strategy', dataObj.strategy);
+      
+      if (dataObj.combos && dataObj.combos.length > 0) {
+        const currentCombos = data.charCombos?.[myChar.id] || [];
+        const newCombos = dataObj.combos.map(c => ({...c, hitType:'通常', location:'中央', successRate:100}));
+        updateMyData('charCombos', { ...data.charCombos, [myChar.id]: [...newCombos, ...currentCombos] });
+      }
+
+      if (dataObj.setplays && dataObj.setplays.length > 0) {
+        const currentSetplays = data.charSetplays?.[myChar.id] || [];
+        const newSetplays = dataObj.setplays.map(s => ({...s, location:'中央', plusF:''}));
+        updateMyData('charSetplays', { ...data.charSetplays, [myChar.id]: [...newSetplays, ...currentSetplays] });
+      }
+
+      alert("AI解析完了！");
+    } catch (e) {
+      console.error(e);
+      alert("解析に失敗しました。詳細はコンソールを確認してください。");
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
   const copyPrompt = () => {
     let prompt = "";
     const base = `あなたはSF6の高度なコーチです。自キャラ:${myChar.name}(${controlType === 'C' ? 'クラシック' : 'モダン'})。`;
     
     switch(activeTab) {
       case 'strategy':
-        prompt = `${base}敵キャラ:${selectedChar.name}。\n【最優先：敵キャラ対策の抽出】\nこの動画から、対敵キャラにおける立ち回り対策を抽出してください。\n\n・立ち回りの重要ポイント（要約）\n・主要な技への対処法や反撃ポイント\n\nこれらをアプリの「対策」欄に貼れるよう、簡潔な箇条書きでまとめてください。\n※前置き不要、内容のみ出力してください。`;
+        prompt = `${base}敵キャラ:${selectedChar.name}。立ち回り対策を抽出してください。`;
         break;
       case 'myCombo':
-        prompt = `${base}\n【最優先：実戦コンボの抽出】\nこの動画から実戦で使えるコンボを抽出してください。\n\n・形式：[始動技] ➔ [レシピ]\n・レシピ内は「 > 」で繋ぎ、DR, PC, OD, SA1~3などの略称を使用してください。\n\nそのままアプリに貼れるよう、余計な解説を省いて出力してください。`;
+        prompt = `${base}実戦コンボを抽出してください。`;
         break;
       case 'setplay':
-        prompt = `${base}\n【最優先：セットプレイ・連携の抽出】\nこの動画から強力な起き攻めや連携を抽出してください。\n\n・形式：[締めパーツ] 有利F：[数字]F ➔ [連携内容]\n\n簡潔に内容のみ出力してください。`;
-        break;
-      case 'badHabits':
-        prompt = `あなたはSF6の高度なコーチです。初心者〜中級者がやりがちな「負け筋」を分析します。\n【最優先：NG行動と改善策の抽出】\nこの動画（または一般的な${myChar.name}の負けパターン）から、改善すべき行動を抽出してください。\n\n・NG行動: [やってはいけない事]\n・改善法: [どうすべきか]\n\n各項目1行で、箇条書きで出力してください。`;
+        prompt = `${base}強力な連携を抽出してください。`;
         break;
       default:
-        prompt = `${base}動画の内容を要約してください。`;
+        prompt = `${base}要約してください。`;
     }
-    navigator.clipboard.writeText(prompt).then(() => alert("タブ専用プロンプトをコピーしました！"));
+    navigator.clipboard.writeText(prompt).then(() => alert("コピー完了"));
   };
 
   const getYTLink = () => {
     let query = `スト6 ${selectedChar.name} 対策`;
     if (activeTab === 'myCombo') query = `スト6 ${myChar.name} コンボ ${controlType === 'C' ? 'クラシック' : 'モダン'}`;
-    if (activeTab === 'setplay') query = `スト6 ${myChar.name} セットプレイ 連携`;
-    if (activeTab === 'badHabits') query = `スト6 勝ち方 NG行動 意識`;
+    if (activeTab === 'setplay') query = `スト6 ${myChar.name} セットプレイ`;
     return `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
   };
 
   const currentCharData = data[selectedChar.id] || {};
-  const comboList = data.charCombos?.[myChar.id] || [{start:'', content:'', hitType:'通常', location:'中央', difficulty:1, successRate:100, dmg:'', plusF:''}];
-  const setplayList = data.charSetplays?.[myChar.id] || [{finisher:'', location:'中央', plusF:'', setup:'', note:''}];
+  const comboList = data.charCombos?.[myChar.id] || [{start:'', content:'', hitType:'通常', location:'中央', successRate:100, dmg:'', plusF:''}];
+  const setplayList = data.charSetplays?.[myChar.id] || [{finisher:'', location:'中央', plusF:'', setup:''}];
   const habitsList = data.badHabits || [{ng:'', solution:''}];
   const trainingList = comboList.filter(c => c.content && (parseInt(c.successRate) || 0) < 80);
 
@@ -151,8 +232,15 @@ export default function App() {
           </div>
         </div>
         <div style={{display:'flex', gap:'4px'}}>
+          <button 
+            onClick={handleAIAnalysis} 
+            disabled={isAnalyzing}
+            style={{...restoreBtnStyle, background:'#8e44ad', borderColor: isAiUnlocked ? '#8e44ad' : '#444', color:'#fff', cursor: isAnalyzing ? 'wait' : 'pointer'}}
+          >
+            {isAnalyzing ? '...' : (isAiUnlocked ? '✨ AI解析' : '🔒 AI機能')}
+          </button>
           <button onClick={() => navigator.clipboard.writeText(JSON.stringify(data)).then(() => alert("コピー"))} style={backupBtnStyle}>💾</button>
-          <button onClick={() => { const i = prompt("復元データを貼り付け"); if(i){ try{ JSON.parse(i); localStorage.setItem(STORAGE_KEY, i); window.location.reload(); }catch(e){alert("ERROR")}} }} style={restoreBtnStyle}>📥</button>
+          <button onClick={() => { const i = prompt("復元データ入力"); if(i){ try{ JSON.parse(i); localStorage.setItem(STORAGE_KEY, i); window.location.reload(); }catch(e){alert("Error")}} }} style={restoreBtnStyle}>📥</button>
         </div>
       </header>
 
@@ -180,7 +268,7 @@ export default function App() {
             <div style={{display:'flex', flexDirection:'column', gap:'4px'}}>
               <div style={{display:'flex', gap:'2px'}}>
                 <a href={getYTLink()} target="_blank" rel="noreferrer" style={linkBtn('#f00')}>YouTube</a>
-                <button onClick={copyPrompt} style={{...linkBtn('#fc0'), background:'transparent', cursor:'pointer'}}>✨ AIプロンプト</button>
+                <button onClick={copyPrompt} style={{...linkBtn('#fc0'), background:'transparent', cursor:'pointer'}}>✨ AI指示</button>
               </div>
               <a href={playerName ? `https://sfbuff.site/fighters/search?q=${playerName}` : "https://sfbuff.site/"} target="_blank" rel="noreferrer" style={linkBtn('#0ff')}>SFBuff</a>
             </div>
@@ -242,7 +330,7 @@ export default function App() {
           ))}</div>
         ) : activeTab === 'training' ? (
           <div>
-            <div style={sectionTitle}>⚔️ トレモ課題 (成功率80%未満)</div>
+            <div style={sectionTitle}>⚔️ トレモ課題</div>
             {trainingList.map((item, idx) => (
               <div key={idx} style={trainingCard}>
                 <div style={{color:'#fff', fontSize:'12px'}}>{item.start} ➔ {item.content}</div>
@@ -263,12 +351,6 @@ export default function App() {
               <div style={battleHeader}>🧠 {selectedChar.name} 対策</div>
               <div style={{whiteSpace:'pre-wrap', fontSize:'12px', color:'#eee'}}>{currentCharData.strategy || '未入力'}</div>
             </div>
-            <div style={battleSection}>
-              <div style={battleHeader}>⚡ {myChar.name} 連携</div>
-              {setplayList.filter(s => s.setup).map((s, i) => (
-                <div key={i} style={battleItem}><span style={{color:'#fc0'}}>[+{s.plusF}F]</span> {s.setup}</div>
-              ))}
-            </div>
           </div>
         ) : (
           <textarea style={mainTextAreaStyle} value={currentCharData[activeTab] || ''} onFocus={() => setFocusField({type:'main', field:activeTab})} onChange={e => updateChar(activeTab, e.target.value)} />
@@ -278,6 +360,7 @@ export default function App() {
   );
 }
 
+// スタイル定義
 const containerStyle = { display:'flex', flexDirection:'column', height:'100vh', background:'#050505', color:'#fff', overflow:'hidden' };
 const headerStyle = { display:'flex', justifyContent:'space-between', padding:'10px', background:'#111', alignItems:'center', borderBottom:'1px solid #333' };
 const nameInputStyle = { width:'60px', background:'#000', color:'#fff', border:'1px solid #444', fontSize:'10px', padding:'3px' };
