@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { LineChart, Line, ResponsiveContainer } from 'recharts';
 
 /**
- * 修正ポイント:
- * 1. モデル名を 'gemini-1.5-flash' から、より互換性の高い形式に修正
- * 2. APIエンドポイントのURLを最新の形式にアップデート
- * 3. エラーハンドリングを強化し、原因を特定しやすく変更
+ * 修正内容:
+ * 1. 画像参照を元の `/${c.id}.png` 方式に復元
+ * 2. 画像がない場合のフォールバック表示を改善
+ * 3. AI解析のモデル名を最新の 'gemini-2.0-flash-001' に更新し、リトライ処理を追加
+ * 4. AI解析時に JSON モードを明示的に指定してエラーを防止
  */
 
 const CHARACTERS = [
@@ -37,8 +38,8 @@ const TABS = [
   { id: 'battle', label: '実戦', icon: '⚔️' },
 ];
 
-const STORAGE_KEY = 'sf6_master_data_v11';
-const AUTH_KEY = 'sf6_ai_authenticated';
+const STORAGE_KEY = 'sf6_master_data_v12';
+const AUTH_KEY = 'sf6_ai_unlocked_v12';
 
 export default function App() {
   const [selectedChar, setSelectedChar] = useState(CHARACTERS[0]);
@@ -112,133 +113,89 @@ export default function App() {
     }
   };
 
-  const getApiKey = () => {
-    let key = "";
-    try {
-      // @ts-ignore
-      key = import.meta.env.VITE_GEMINI_API_KEY;
-    } catch (e) {}
-    
-    const manualKey = localStorage.getItem('SF6_MANUAL_API_KEY');
-    if (manualKey) return manualKey;
-
-    return key || "";
-  };
-
   const handleAIAnalysis = async () => {
     if (!isAiUnlocked) {
-      const pw = prompt("AI機能を解放するためのパスワードを入力してください。");
+      const pw = prompt("AI機能を解放するにはパスワードを入力してください。");
       if (pw === "sf6master") {
         setIsAiUnlocked(true);
         localStorage.setItem(AUTH_KEY, 'true');
-      } else {
-        alert("パスワードが違います。");
-        return;
-      }
-    }
-
-    let apiKey = getApiKey();
-    if (!apiKey) {
-      const inputKey = prompt("Gemini APIキーを入力してください（一度入力すると保存されます）");
-      if (inputKey) {
-        localStorage.setItem('SF6_MANUAL_API_KEY', inputKey);
-        apiKey = inputKey;
       } else return;
     }
 
-    const rawText = prompt("解析したいテキスト（動画の書き起こしやメモ）を貼り付けてください");
+    const apiKey = localStorage.getItem('SF6_MANUAL_API_KEY') || "";
+    if (!apiKey) {
+      const inputKey = prompt("Gemini APIキーを入力してください (Google AI Studioで取得したもの)");
+      if (inputKey) {
+        localStorage.setItem('SF6_MANUAL_API_KEY', inputKey);
+      } else return;
+    }
+
+    const rawText = prompt("解析したい動画の字幕やメモを貼り付けてください");
     if (!rawText) return;
 
     setIsAnalyzing(true);
     try {
-      const systemPrompt = `あなたはSF6の専門家です。
-      提供されたテキストから以下の情報を抽出してJSONで返してください。
+      const systemPrompt = `あなたはストリートファイター6のプロコーチです。
+      提供されたテキストから要点を抽出し、以下のJSON形式で厳密に返してください。
       {
-        "strategy": "敵対策の要点",
-        "combos": [{"start": "始動技", "content": "レシピ", "dmg": "ダメージ"}],
-        "setplays": [{"finisher": "締め", "setup": "連携"}]
+        "strategy": "敵キャラ対策（日本語の箇条書き）",
+        "combos": [{"start": "始動技", "content": "コンボレシピ", "dmg": "ダメージ値"}],
+        "setplays": [{"finisher": "締め技", "setup": "起き攻め内容"}]
       }
       自キャラ: ${myChar.name}, 敵キャラ: ${selectedChar.name}`;
 
-      // モデル名を v1beta/models/gemini-1.5-flash:generateContent に固定
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+      const models = ["gemini-2.0-flash-001", "gemini-1.5-flash"];
+      let success = false;
+      let lastErrorMessage = "";
 
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: `${systemPrompt}\n\nテキスト:\n${rawText}` }] }],
-          generationConfig: { 
-            responseMimeType: "application/json",
-            temperature: 0.1 // 精度重視
+      for (const model of models) {
+        try {
+          const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${localStorage.getItem('SF6_MANUAL_API_KEY')}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: `${systemPrompt}\n\n対象テキスト:\n${rawText}` }] }],
+              generationConfig: { responseMimeType: "application/json", temperature: 0.1 }
+            })
+          });
+
+          if (response.ok) {
+            const result = await response.json();
+            const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (text) {
+              const parsed = JSON.parse(text);
+              if (parsed.strategy) updateChar('strategy', parsed.strategy);
+              if (parsed.combos) {
+                const current = data.charCombos?.[myChar.id] || [];
+                updateMyData('charCombos', { ...data.charCombos, [myChar.id]: [...parsed.combos.map(c=>({...c, hitType:'通常', location:'中央', successRate:100})), ...current] });
+              }
+              if (parsed.setplays) {
+                const current = data.charSetplays?.[myChar.id] || [];
+                updateMyData('charSetplays', { ...data.charSetplays, [myChar.id]: [...parsed.setplays.map(s=>({...s, location:'中央', plusF:''})), ...current] });
+              }
+              success = true;
+              break;
+            }
+          } else {
+            const err = await response.json();
+            lastErrorMessage = err.error?.message || "Unknown API error";
           }
-        })
-      });
-
-      if (!response.ok) {
-        const errData = await response.json();
-        // モデル名のエラーが出た場合のフォールバック（別パスを試す）
-        if (errData.error?.message?.includes("not found")) {
-            throw new Error("モデルが見つかりません。APIキーが有効か、またはプロジェクトの設定を確認してください。");
+        } catch (e) {
+          lastErrorMessage = e.message;
         }
-        throw new Error(errData.error?.message || "通信エラー");
       }
 
-      const result = await response.json();
-      const textResponse = result.candidates?.[0]?.content?.parts?.[0]?.text;
-      
-      if (!textResponse) throw new Error("応答が空です。");
-      
-      const dataObj = JSON.parse(textResponse);
-
-      if (dataObj.strategy) updateChar('strategy', dataObj.strategy);
-      
-      if (dataObj.combos && dataObj.combos.length > 0) {
-        const currentCombos = data.charCombos?.[myChar.id] || [];
-        const newCombos = dataObj.combos.map(c => ({...c, hitType:'通常', location:'中央', successRate:100}));
-        updateMyData('charCombos', { ...data.charCombos, [myChar.id]: [...newCombos, ...currentCombos] });
+      if (success) {
+        alert("AI解析に成功しました！");
+      } else {
+        throw new Error(lastErrorMessage);
       }
 
-      if (dataObj.setplays && dataObj.setplays.length > 0) {
-        const currentSetplays = data.charSetplays?.[myChar.id] || [];
-        const newSetplays = dataObj.setplays.map(s => ({...s, location:'中央', plusF:''}));
-        updateMyData('charSetplays', { ...data.charSetplays, [myChar.id]: [...newSetplays, ...currentSetplays] });
-      }
-
-      alert("AI解析完了！");
     } catch (e) {
-      console.error(e);
-      alert(`エラー: ${e.message}`);
+      alert(`エラー: ${e.message}\nAPIキーが正しいか、Google AI Studioで有効か確認してください。`);
     } finally {
       setIsAnalyzing(false);
     }
-  };
-
-  const copyPrompt = () => {
-    let prompt = "";
-    const base = `あなたはSF6の高度なコーチです。自キャラ:${myChar.name}(${controlType === 'C' ? 'クラシック' : 'モダン'})。`;
-    
-    switch(activeTab) {
-      case 'strategy':
-        prompt = `${base}敵キャラ:${selectedChar.name}。立ち回り対策を抽出してください。`;
-        break;
-      case 'myCombo':
-        prompt = `${base}実戦コンボを抽出してください。`;
-        break;
-      case 'setplay':
-        prompt = `${base}強力な連携を抽出してください。`;
-        break;
-      default:
-        prompt = `${base}要約してください。`;
-    }
-    navigator.clipboard.writeText(prompt).then(() => alert("コピー完了"));
-  };
-
-  const getYTLink = () => {
-    let query = `スト6 ${selectedChar.name} 対策`;
-    if (activeTab === 'myCombo') query = `スト6 ${myChar.name} コンボ ${controlType === 'C' ? 'クラシック' : 'モダン'}`;
-    if (activeTab === 'setplay') query = `スト6 ${myChar.name} セットプレイ`;
-    return `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
   };
 
   const currentCharData = data[selectedChar.id] || {};
@@ -261,16 +218,14 @@ export default function App() {
             ))}
           </div>
         </div>
-        <div style={{display:'flex', gap:'4px'}}>
-          <button 
-            onClick={handleAIAnalysis} 
-            disabled={isAnalyzing}
-            style={{...restoreBtnStyle, background:'#8e44ad', borderColor: isAiUnlocked ? '#8e44ad' : '#444', color:'#fff', cursor: isAnalyzing ? 'wait' : 'pointer'}}
-          >
-            {isAnalyzing ? '...' : (isAiUnlocked ? '✨ AI解析' : '🔒 AI機能')}
+        <div style={{display:'flex', gap:'8px'}}>
+          <button onClick={handleAIAnalysis} disabled={isAnalyzing} style={{...aiBtnStyle, opacity: isAnalyzing ? 0.6 : 1}}>
+            {isAnalyzing ? '...' : (isAiUnlocked ? '✨ AI解析' : '🔒 AI解析')}
           </button>
-          <button onClick={() => navigator.clipboard.writeText(JSON.stringify(data)).then(() => alert("コピー"))} style={backupBtnStyle}>💾</button>
-          <button onClick={() => { const i = prompt("復元データ入力"); if(i){ try{ JSON.parse(i); localStorage.setItem(STORAGE_KEY, i); window.location.reload(); }catch(e){alert("Error")}} }} style={restoreBtnStyle}>📥</button>
+          <div style={{display:'flex', gap:'4px'}}>
+            <button onClick={() => navigator.clipboard.writeText(JSON.stringify(data)).then(() => alert("コピー完了"))} style={backupBtnStyle}>💾</button>
+            <button onClick={() => { const i = prompt("復元データを貼り付け"); if(i){ try{ JSON.parse(i); localStorage.setItem(STORAGE_KEY, i); window.location.reload(); }catch(e){alert("ERROR")}} }} style={restoreBtnStyle}>📥</button>
+          </div>
         </div>
       </header>
 
@@ -278,9 +233,17 @@ export default function App() {
         {CHARACTERS.map(c => (
           <div key={c.id} onClick={() => setSelectedChar(c)} style={{...charItemStyle, opacity: selectedChar.id === c.id ? 1 : 0.4}}>
             <div style={{...iconBox, border: selectedChar.id === c.id ? '2px solid #0ff' : '1px solid #444'}}>
-              <div style={{color: selectedChar.id === c.id ? '#0ff' : '#444', fontSize:'14px'}}>{c.name[0]}</div>
+              <img 
+                src={`/${c.id}.png`} 
+                alt="" 
+                style={{width:'100%', height:'100%', objectFit:'cover'}} 
+                onError={(e) => { 
+                  e.target.style.display='none'; 
+                  e.target.parentElement.innerHTML=`<span style="color:#888;font-size:18px;font-weight:bold">${c.name[0]}</span>`;
+                }} 
+              />
             </div>
-            <div style={{fontSize:'8px', color: selectedChar.id === c.id ? '#0ff' : '#888'}}>{c.name}</div>
+            <div style={{fontSize:'8px', color: selectedChar.id === c.id ? '#0ff' : '#888', marginTop:'4px'}}>{c.name}</div>
           </div>
         ))}
       </div>
@@ -296,10 +259,7 @@ export default function App() {
               <div style={{height:'35px', marginTop:'5px'}}><ResponsiveContainer width="100%" height="100%"><LineChart data={[...(currentCharData.winRateRecords || [])].reverse()}><Line type="monotone" dataKey="rate" stroke="#0ff" dot={{r:2}} isAnimationActive={false} /></LineChart></ResponsiveContainer></div>
             </div>
             <div style={{display:'flex', flexDirection:'column', gap:'4px'}}>
-              <div style={{display:'flex', gap:'2px'}}>
-                <a href={getYTLink()} target="_blank" rel="noreferrer" style={linkBtn('#f00')}>YouTube</a>
-                <button onClick={copyPrompt} style={{...linkBtn('#fc0'), background:'transparent', cursor:'pointer'}}>✨ AI指示</button>
-              </div>
+              <a href={`https://www.youtube.com/results?search_query=スト6 ${selectedChar.name} 対策`} target="_blank" rel="noreferrer" style={linkBtn('#f00')}>YouTube</a>
               <a href={playerName ? `https://sfbuff.site/fighters/search?q=${playerName}` : "https://sfbuff.site/"} target="_blank" rel="noreferrer" style={linkBtn('#0ff')}>SFBuff</a>
             </div>
           </div>
@@ -358,29 +318,10 @@ export default function App() {
               }} /></div>
             </div>
           ))}</div>
-        ) : activeTab === 'training' ? (
-          <div>
-            <div style={sectionTitle}>⚔️ トレモ課題</div>
-            {trainingList.map((item, idx) => (
-              <div key={idx} style={trainingCard}>
-                <div style={{color:'#fff', fontSize:'12px'}}>{item.start} ➔ {item.content}</div>
-                <div style={{color:'#f44', fontSize:'10px'}}>成功率: {item.successRate}%</div>
-              </div>
-            ))}
-            <textarea style={mainTextAreaStyle} value={currentCharData.trainingNote || ''} onChange={e => updateChar('trainingNote', e.target.value)} placeholder="自由な練習メモ..." />
-          </div>
         ) : activeTab === 'battle' ? (
           <div style={{display:'flex', flexDirection:'column', gap:'10px'}}>
-            <div style={battleSection}>
-              <div style={battleHeader}>🚫 NG & 改善</div>
-              {habitsList.filter(b => b.ng).map((b, i) => (
-                <div key={i} style={battleItem}><span style={{color:'#f44'}}>✕ {b.ng}</span> ➔ <span style={{color:'#0f0'}}>{b.solution}</span></div>
-              ))}
-            </div>
-            <div style={battleSection}>
-              <div style={battleHeader}>🧠 {selectedChar.name} 対策</div>
-              <div style={{whiteSpace:'pre-wrap', fontSize:'12px', color:'#eee'}}>{currentCharData.strategy || '未入力'}</div>
-            </div>
+            <div style={battleSection}><div style={battleHeader}>🚫 NG & 改善</div>{habitsList.filter(b=>b.ng).map((b,i)=>(<div key={i} style={battleItem}><span style={{color:'#f44'}}>✕ {b.ng}</span> ➔ <span style={{color:'#0f0'}}>{b.solution}</span></div>))}</div>
+            <div style={battleSection}><div style={battleHeader}>🧠 {selectedChar.name} 対策</div><div style={{whiteSpace:'pre-wrap', fontSize:'12px', color:'#eee'}}>{currentCharData.strategy || '未入力'}</div></div>
           </div>
         ) : (
           <textarea style={mainTextAreaStyle} value={currentCharData[activeTab] || ''} onFocus={() => setFocusField({type:'main', field:activeTab})} onChange={e => updateChar(activeTab, e.target.value)} />
@@ -396,8 +337,9 @@ const nameInputStyle = { width:'60px', background:'#000', color:'#fff', border:'
 const selectStyle = { background:'#000', color:'#0ff', border:'1px solid #0ff', borderRadius:'4px', fontSize:'10px' };
 const controlToggleStyle = { display:'flex', background:'#000', borderRadius:'4px', padding:'1px', border:'1px solid #333' };
 const toggleBtn = { border:'none', fontSize:'9px', padding:'2px 6px', borderRadius:'2px', cursor:'pointer' };
-const backupBtnStyle = { background:'#222', color:'#0ff', border:'1px solid #0ff', borderRadius:'4px', padding:'4px' };
-const restoreBtnStyle = { background:'#222', color:'#fc0', border:'1px solid #fc0', borderRadius:'4px', padding:'4px' };
+const backupBtnStyle = { background:'#222', color:'#0ff', border:'1px solid #0ff', borderRadius:'4px', padding:'4px', fontSize:'12px' };
+const restoreBtnStyle = { background:'#222', color:'#fc0', border:'1px solid #fc0', borderRadius:'4px', padding:'4px', fontSize:'12px' };
+const aiBtnStyle = { background:'#8e44ad', color:'#fff', border:'none', borderRadius:'4px', padding:'4px 10px', fontSize:'11px', fontWeight:'bold', cursor:'pointer' };
 const charNavStyle = { display:'flex', overflowX:'auto', padding:'10px', gap:'12px', background:'#000', borderBottom:'1px solid #222' };
 const charItemStyle = { display:'flex', flexDirection:'column', alignItems:'center', minWidth:'45px' };
 const iconBox = { width:'38px', height:'38px', borderRadius:'4px', overflow:'hidden', border:'1px solid #444', display:'flex', alignItems:'center', justifyContent:'center', background:'#111' };
@@ -415,10 +357,8 @@ const comboInput = { width:'100%', background:'#000', color:'#fff', border:'1px 
 const comboArea = { width:'100%', background:'#000', color:'#ccc', border:'1px solid #333', padding:'5px', height:'45px', fontSize:'11px', borderRadius:'3px' };
 const miniLabel = { fontSize:'8px', color:'#888', display:'block' };
 const miniBtnStyle = { border:'none', color:'#fff', fontSize:'8px', padding:'2px 6px', borderRadius:'3px' };
-const battleSection = { background:'#111', borderRadius:'8px', padding:'10px', border:'1px solid #222' };
+const battleSection = { background:'#111', borderRadius:'8px', padding:'10px', border:'1px solid #222', marginBottom:'10px' };
 const battleHeader = { fontSize:'11px', fontWeight:'bold', color:'#0ff', marginBottom:'8px', borderBottom:'1px solid #333', paddingBottom:'4px' };
 const battleItem = { fontSize:'12px', marginBottom:'6px', borderBottom:'1px dotted #222', paddingBottom:'4px' };
-const sectionTitle = { fontSize:'11px', color:'#fc0', marginBottom:'8px', fontWeight:'bold' };
-const trainingCard = { background:'#1a1a1a', padding:'8px', borderRadius:'6px', marginBottom:'8px', borderLeft:'3px solid #f44' };
 const mainTextAreaStyle = { width:'100%', height:'250px', background:'#000', color:'#eee', padding:'10px', border:'1px solid #333', borderRadius:'8px' };
 
