@@ -1,6 +1,22 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { LineChart, Line, ResponsiveContainer, YAxis, XAxis, Tooltip } from 'recharts';
-import { Search, Brain, Sword, Shield, Settings, Save, Download, Youtube, Zap, AlertTriangle, PlayCircle, Clipboard, ArrowRight } from 'lucide-react';
+
+// --- Inline SVG Icons to replace lucide-react (Zero dependencies) ---
+const Icons = {
+  Search: ({ size = 16 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>,
+  Brain: ({ size = 16 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.5 2a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1-.5-.5v-2a.5.5 0 0 1 .5-.5h2zM14.5 2a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1-.5-.5v-2a.5.5 0 0 1 .5-.5h2zM21 16a3 3 0 0 1-3 3h-1.5a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3H18a3 3 0 0 1 3 3v9zM10.5 19A3 3 0 0 1 7.5 22H6a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3h1.5a3 3 0 0 1 3 3v12z"></path></svg>,
+  Sword: ({ size = 16 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"></polyline><line x1="13" y1="19" x2="19" y2="13"></line><line x1="16" y1="16" x2="20" y2="20"></line><line x1="19" y1="21" x2="20" y2="20"></line></svg>,
+  Shield: ({ size = 16 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>,
+  Settings: ({ size = 16 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>,
+  Save: ({ size = 16 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>,
+  Download: ({ size = 16 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>,
+  Youtube: ({ size = 16 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.42a2.78 2.78 0 0 0-1.94 2C1 8.14 1 12 1 12s0 3.86.42 5.58a2.78 2.78 0 0 0 1.94 2c1.71.42 8.6.42 8.6.42s6.88 0 8.6-.42a2.78 2.78 0 0 0 1.94-2C23 15.86 23 12 23 12s0-3.86-.42-5.58z"></path><polygon points="9.75 15.02 15.5 12 9.75 8.98 9.75 15.02"></polygon></svg>,
+  Zap: ({ size = 16 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>,
+  AlertTriangle: ({ size = 16 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>,
+  PlayCircle: ({ size = 16 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polygon points="10 8 16 12 10 16 10 8"></polygon></svg>,
+  Clipboard: ({ size = 16 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg>,
+  ArrowRight: ({ size = 16 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+};
 
 const CHARACTERS = [
   { name: 'リュウ', id: 'ryu' }, { name: 'ルーク', id: 'luke' }, { name: 'ジェイミー', id: 'jamie' },
@@ -21,13 +37,13 @@ const MODERN_CMDS = ['L', 'M', 'H', 'SP', 'AS'];
 const SYSTEM_CMDS = ['DR', 'PC', 'TC', '前ステ', 'OD', 'SA1', 'SA2', 'SA3'];
 
 const TABS = [
-  { id: 'strategy', label: '対策', icon: <Shield size={14}/> },
-  { id: 'myCombo', label: 'コンボ', icon: <Zap size={14}/> },
-  { id: 'setplay', label: '連携', icon: <PlayCircle size={14}/> },
-  { id: 'badHabits', label: '悪癖', icon: <AlertTriangle size={14}/> },
-  { id: 'training', label: 'トレモ', icon: <Settings size={14}/> },
-  { id: 'battle', label: '実戦', icon: <Sword size={14}/> },
-  { id: 'ai', label: 'AI解析', icon: <Brain size={14}/> },
+  { id: 'strategy', label: '対策', icon: <Icons.Shield size={14}/> },
+  { id: 'myCombo', label: 'コンボ', icon: <Icons.Zap size={14}/> },
+  { id: 'setplay', label: '連携', icon: <Icons.PlayCircle size={14}/> },
+  { id: 'badHabits', label: '悪癖', icon: <Icons.AlertTriangle size={14}/> },
+  { id: 'training', label: 'トレモ', icon: <Icons.Settings size={14}/> },
+  { id: 'battle', label: '実戦', icon: <Icons.Sword size={14}/> },
+  { id: 'ai', label: 'AI解析', icon: <Icons.Brain size={14}/> },
 ];
 
 const STORAGE_KEY = 'sf6_master_v12_pro';
@@ -205,7 +221,6 @@ export default function App() {
   const setplayList = data.charSetplays?.[myChar.id] || [{finisher:'', location:'中央', setup:''}];
   const habitsList = data.badHabits?.global || [{ng:'', solution:''}];
 
-  // Sub-components as functions within the main file
   const BattleBox = ({ color, icon, title, items }) => (
     <div style={{background:'#111', borderRadius:'10px', padding:'12px', borderLeft:`4px solid ${color}`}}>
       <div style={{display:'flex', alignItems:'center', gap:'6px', color:'#fff', fontSize:'12px', marginBottom:'8px', fontWeight:'bold', opacity:0.8}}>
@@ -233,10 +248,10 @@ export default function App() {
         </div>
         <div style={{display:'flex', gap:'8px', alignItems:'center'}}>
           <a href={playerName ? `https://sfbuff.site/fighters/search?q=${playerName}` : "https://sfbuff.site/"} target="_blank" rel="noreferrer" style={{color:'#0ff', textDecoration:'none', fontSize:'10px', display:'flex', alignItems:'center', gap:'2px'}}>
-             <Search size={12}/> SFBuff
+             <Icons.Search size={12}/> SFBuff
           </a>
-          <button onClick={() => navigator.clipboard.writeText(JSON.stringify(data))} style={iconBtnStyle} title="Save"><Save size={16}/></button>
-          <button onClick={() => { const i = prompt("Restore JSON"); if(i){ try{ JSON.parse(i); localStorage.setItem(STORAGE_KEY, i); window.location.reload(); }catch(e){}} }} style={iconBtnStyle} title="Restore"><Download size={16}/></button>
+          <button onClick={() => navigator.clipboard.writeText(JSON.stringify(data))} style={iconBtnStyle} title="Save"><Icons.Save size={16}/></button>
+          <button onClick={() => { const i = prompt("Restore JSON"); if(i){ try{ JSON.parse(i); localStorage.setItem(STORAGE_KEY, i); window.location.reload(); }catch(e){}} }} style={iconBtnStyle} title="Restore"><Icons.Download size={16}/></button>
         </div>
       </header>
 
@@ -271,11 +286,11 @@ export default function App() {
               </div>
             </div>
             <div style={{display:'flex', flexDirection:'column', gap:'4px'}}>
-              <a href={getYTLink()} target="_blank" rel="noreferrer" style={linkBtn('#f44')}><Youtube size={11}/> YouTube</a>
+              <a href={getYTLink()} target="_blank" rel="noreferrer" style={linkBtn('#f44')}><Icons.Youtube size={11}/> YouTube</a>
               <button onClick={() => {
                 const base = `自キャラ:${myChar.name}(${controlType})、敵:${selectedChar.name}。直近勝率:${currentCharData.winRateRecords?.[0]?.rate || '不詳'}%。`;
                 navigator.clipboard.writeText(base + "動画から実戦的な対策を要約してください。");
-              }} style={linkBtn('#fc0')}><Brain size={11}/> 解析用コピー</button>
+              }} style={linkBtn('#fc0')}><Icons.Brain size={11}/> 解析用コピー</button>
             </div>
           </div>
         )}
@@ -334,23 +349,23 @@ export default function App() {
 
           {activeTab === 'training' && (
             <div>
-              <div style={sectionHeader}><Zap size={14}/> 集中練習が必要</div>
+              <div style={sectionHeader}><Icons.Zap size={14}/> 集中練習が必要</div>
               {comboList.filter(c => c.content && c.successRate < 80).map((item, i) => (
                 <div key={i} style={trainingCard}>
                   <div style={{fontSize:'12px'}}>{item.start} ➔ {item.content}</div>
                   <div style={{color:'#f44', fontSize:'10px', marginTop:'4px'}}>成功率: {item.successRate}%</div>
                 </div>
               ))}
-              <div style={{...sectionHeader, marginTop:'20px'}}><Settings size={14}/> 自由メモ</div>
+              <div style={{...sectionHeader, marginTop:'20px'}}><Icons.Settings size={14}/> 自由メモ</div>
               <textarea style={mainTextAreaStyle} value={currentCharData.trainingNote || ''} onChange={e => updateChar('trainingNote', e.target.value)} />
             </div>
           )}
 
           {activeTab === 'battle' && (
             <div style={{display:'flex', flexDirection:'column', gap:'12px'}}>
-              <BattleBox color="#f44" icon={<AlertTriangle size={14}/>} title="要注意！NG行動" items={habitsList.filter(h => h.ng).map(h => `${h.ng} ➔ ${h.solution}`)} />
-              <BattleBox color="#0ff" icon={<Shield size={14}/>} title={`対 ${selectedChar.name} 対策`} items={[currentCharData.strategy || '未入力']} />
-              <BattleBox color="#fc0" icon={<Zap size={14}/>} title="起き攻め/連携" items={(data.charSetplays?.[myChar.id] || []).filter(s => s.setup).map(s => `[${s.finisher}] ${s.setup}`)} />
+              <BattleBox color="#f44" icon={<Icons.AlertTriangle size={14}/>} title="要注意！NG行動" items={habitsList.filter(h => h.ng).map(h => `${h.ng} ➔ ${h.solution}`)} />
+              <BattleBox color="#0ff" icon={<Icons.Shield size={14}/>} title={`対 ${selectedChar.name} 対策`} items={[currentCharData.strategy || '未入力']} />
+              <BattleBox color="#fc0" icon={<Icons.Zap size={14}/>} title="起き攻め/連携" items={(data.charSetplays?.[myChar.id] || []).filter(s => s.setup).map(s => `[${s.finisher}] ${s.setup}`)} />
             </div>
           )}
 
