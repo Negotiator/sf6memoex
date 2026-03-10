@@ -1,14 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { LineChart, Line, ResponsiveContainer } from 'recharts';
 
-/**
- * 修正・統合内容:
- * 1. ベースコードの「AIプロンプトコピー」と「インポート/エクスポート」を完全維持
- * 2. ビルドエラーの原因となった未使用変数 'trainingList' をトレモタブで描画
- * 3. 画像パス /${c.id}.png を維持し、エラー時のフォールバックを実装
- * 4. 拡張機能として「AI直接解析(Gemini)」も選択可能に統合
- */
-
 const CHARACTERS = [
   { name: 'リュウ', id: 'ryu' }, { name: 'ルーク', id: 'luke' }, { name: 'ジェイミー', id: 'jamie' },
   { name: '春麗', id: 'chun-li' }, { name: 'ガイル', id: 'guile' }, { name: 'キンバリー', id: 'kimberly' },
@@ -38,7 +30,7 @@ const TABS = [
   { id: 'battle', label: '実戦', icon: '⚔️' },
 ];
 
-const STORAGE_KEY = 'sf6_master_data_v12'; // バージョンアップ
+const STORAGE_KEY = 'sf6_master_data_v12';
 const AUTH_KEY = 'sf6_ai_unlocked_v12';
 
 export default function App() {
@@ -119,24 +111,23 @@ export default function App() {
     
     switch(activeTab) {
       case 'strategy':
-        prompt = `${base}敵キャラ:${selectedChar.name}。\n【最優先：敵キャラ対策の抽出】\nこの動画から、対敵キャラにおける立ち回り対策を抽出してください。\n\n・立ち回りの重要ポイント（要約）\n・主要な技への対処法や反撃ポイント\n\nこれらをアプリの「対策」欄に貼れるよう、簡潔な箇条書きでまとめてください。\n※前置き不要、内容のみ出力してください。`;
+        prompt = `${base}敵キャラ:${selectedChar.name}。\n【最優先：敵キャラ対策の抽出】\nこのテキストから、対敵キャラにおける立ち回り対策を抽出してください。\n\n・立ち回りの重要ポイント（要約）\n・主要な技への対処法や反撃ポイント\n\nこれらをアプリの「対策」欄に貼れるよう、簡潔な箇条書きでまとめてください。\n※前置き不要、内容のみ出力してください。`;
         break;
       case 'myCombo':
-        prompt = `${base}\n【最優先：実戦コンボの抽出】\nこの動画から実戦で使えるコンボを抽出してください。\n\n・形式：[始動技] ➔ [レシピ]\n・レシピ内は「 > 」で繋ぎ、DR, PC, OD, SA1~3などの略称を使用してください。\n\nそのままアプリに貼れるよう、余計な解説を省いて出力してください。`;
+        prompt = `${base}\n【最優先：実戦コンボの抽出】\nこのテキストから実戦で使えるコンボを抽出してください。\n\n・形式：[始動技] ➔ [レシピ]\n・レシピ内は「 > 」で繋ぎ、DR, PC, OD, SA1~3などの略称を使用してください。\n\nそのままアプリに貼れるよう、余計な解説を省いて出力してください。`;
         break;
       case 'setplay':
-        prompt = `${base}\n【最優先：セットプレイ・連携の抽出】\nこの動画から強力な起き攻めや連携を抽出してください。\n\n・形式：[締めパーツ] 有利F：[数字]F ➔ [連携内容]\n\n簡潔に内容のみ出力してください。`;
+        prompt = `${base}\n【最優先：セットプレイ・連携の抽出】\nこのテキストから強力な起き攻めや連携を抽出してください。\n\n・形式：[締めパーツ] 有利F：[数字]F ➔ [連携内容]\n\n簡潔に内容のみ出力してください。`;
         break;
       case 'badHabits':
-        prompt = `あなたはSF6の高度なコーチです。初心者〜中級者がやりがちな「負け筋」を分析します。\n【最優先：NG行動と改善策の抽出】\nこの動画（または一般的な${myChar.name}の負けパターン）から、改善すべき行動を抽出してください。\n\n・NG行動: [やってはいけない事]\n・改善法: [どうすべきか]\n\n各項目1行で、箇条書きで出力してください。`;
+        prompt = `あなたはSF6の高度なコーチです。負け筋を分析します。\n【最優先：NG行動と改善策の抽出】\nこのテキストから、改善すべき行動を抽出してください。\n\n・NG行動: [やってはいけない事]\n・改善法: [どうすべきか]\n\n各項目1行で出力してください。`;
         break;
       default:
-        prompt = `${base}動画の内容を要約してください。`;
+        prompt = `${base}内容を要約してください。`;
     }
-    navigator.clipboard.writeText(prompt).then(() => alert("タブ専用プロンプトをコピーしました！"));
+    navigator.clipboard.writeText(prompt).then(() => alert("プロンプトをコピーしました！"));
   };
 
-  // AI直接解析(Gemini)
   const handleAIAnalysis = async () => {
     if (!isAiUnlocked) {
       const pw = prompt("AI機能を解放するにはパスワードを入力してください。");
@@ -149,8 +140,9 @@ export default function App() {
     const apiKey = localStorage.getItem('SF6_MANUAL_API_KEY') || "";
     if (!apiKey) {
       const inputKey = prompt("Gemini APIキーを入力してください");
-      if (inputKey) localStorage.setItem('SF6_MANUAL_API_KEY', inputKey);
-      else return;
+      if (inputKey) {
+          localStorage.setItem('SF6_MANUAL_API_KEY', inputKey);
+      } else return;
     }
 
     const rawText = prompt("動画の字幕やメモを貼り付けてください");
@@ -158,35 +150,59 @@ export default function App() {
 
     setIsAnalyzing(true);
     try {
-      const systemPrompt = `スト6コーチ。JSONで返せ。
-      {
-        "strategy": "対策箇条書き",
-        "combos": [{"start": "始動", "content": "レシピ", "dmg": "数値"}]
-      }`;
-
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-001:generateContent?key=${localStorage.getItem('SF6_MANUAL_API_KEY')}`, {
+      // モデル名を最新の安定版に固定。apiKeyはクエリパラメータで渡す。
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${localStorage.getItem('SF6_MANUAL_API_KEY')}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: `${systemPrompt}\n\nテキスト:\n${rawText}` }] }],
+          contents: [{ parts: [{ text: `
+            あなたはスト6のコーチです。以下のテキストを解析し、情報を抽出してください。
+            返信は必ず以下の純粋なJSON形式のみで行ってください（Markdownの装飾は不要）。
+            {
+              "strategy": "立ち回りや技対策の箇条書き",
+              "combos": [{"start": "始動技", "content": "コンボレシピ", "dmg": "ダメージ数値"}]
+            }
+            解析対象テキスト:
+            ${rawText}` }] }],
           generationConfig: { responseMimeType: "application/json", temperature: 0.1 }
         })
       });
 
-      if (response.ok) {
-        const result = await response.json();
-        const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (text) {
-          const parsed = JSON.parse(text);
-          if (parsed.strategy) updateChar('strategy', parsed.strategy);
-          if (parsed.combos) {
-            const current = data.charCombos?.[myChar.id] || [];
-            updateMyData('charCombos', { ...data.charCombos, [myChar.id]: [...parsed.combos.map(c=>({...c, hitType:'通常', location:'中央', successRate:100})), ...current] });
-          }
-          alert("解析完了。対策とコンボを更新しました。");
+      const result = await response.json();
+      const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+      
+      if (text) {
+        const parsed = JSON.parse(text);
+        
+        // 対策を更新 (現在の選択キャラに対して)
+        if (parsed.strategy) {
+          updateChar('strategy', parsed.strategy);
         }
+        
+        // コンボを更新 (マイキャラに対して)
+        if (parsed.combos && Array.isArray(parsed.combos)) {
+          const currentCombos = data.charCombos?.[myChar.id] || [];
+          const newCombos = parsed.combos.map(c => ({
+            start: c.start || '',
+            content: c.content || '',
+            dmg: c.dmg || '',
+            hitType: '通常',
+            location: '中央',
+            successRate: 100,
+            plusF: ''
+          }));
+          
+          const updatedComboList = [...newCombos, ...currentCombos];
+          const newData = { ...data, charCombos: { ...(data.charCombos || {}), [myChar.id]: updatedComboList } };
+          setData(newData);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(newData));
+        }
+        alert("解析が完了しました。");
+      } else {
+        throw new Error("AIからの応答が空でした。APIキーを確認してください。");
       }
     } catch (e) {
+      console.error(e);
       alert("解析エラー: " + e.message);
     } finally {
       setIsAnalyzing(false);
@@ -205,8 +221,6 @@ export default function App() {
   const comboList = data.charCombos?.[myChar.id] || [{start:'', content:'', hitType:'通常', location:'中央', successRate:100, dmg:'', plusF:''}];
   const setplayList = data.charSetplays?.[myChar.id] || [{finisher:'', location:'中央', plusF:'', setup:''}];
   const habitsList = data.badHabits || [{ng:'', solution:''}];
-  
-  // ビルドエラー回避: trainingListを計算し、トレモタブで使用する
   const trainingList = comboList.filter(c => c.content && (parseInt(c.successRate) || 0) < 80);
 
   return (
@@ -224,9 +238,9 @@ export default function App() {
           </div>
         </div>
         <div style={{display:'flex', gap:'5px'}}>
-          <button onClick={handleAIAnalysis} disabled={isAnalyzing} style={aiBtnStyle}>{isAnalyzing ? '...' : (isAiUnlocked ? '✨ AI解析' : '🔒 AI解析')}</button>
-          <button onClick={() => navigator.clipboard.writeText(JSON.stringify(data)).then(() => alert("データをコピーしました"))} style={backupBtnStyle}>💾</button>
-          <button onClick={() => { const i = prompt("復元データを貼り付け"); if(i){ try{ JSON.parse(i); localStorage.setItem(STORAGE_KEY, i); window.location.reload(); }catch(e){alert("ERROR")}} }} style={restoreBtnStyle}>📥</button>
+          <button onClick={handleAIAnalysis} disabled={isAnalyzing} style={{...aiBtnStyle, opacity: isAnalyzing ? 0.6 : 1}}>{isAnalyzing ? '解析中...' : (isAiUnlocked ? '✨ AI解析' : '🔒 AI解析')}</button>
+          <button onClick={() => navigator.clipboard.writeText(JSON.stringify(data)).then(() => alert("コピーしました"))} style={backupBtnStyle}>💾</button>
+          <button onClick={() => { const i = prompt("復元データを貼り付け"); if(i){ try{ JSON.parse(i); localStorage.setItem(STORAGE_KEY, i); window.location.reload(); }catch(e){alert("形式が正しくありません")}} }} style={restoreBtnStyle}>📥</button>
         </div>
       </header>
 
@@ -235,7 +249,7 @@ export default function App() {
           <div key={c.id} onClick={() => setSelectedChar(c)} style={{...charItemStyle, opacity: selectedChar.id === c.id ? 1 : 0.4}}>
             <div style={{...iconBox, border: selectedChar.id === c.id ? '2px solid #0ff' : '1px solid #444'}}>
               <img src={`/${c.id}.png`} alt="" style={{width:'100%', height:'100%', objectFit:'cover'}} 
-                   onError={(e) => { e.target.style.display='none'; e.target.parentElement.innerHTML=`<span style="color:#888;font-size:16px">${c.name[0]}</span>`; }} />
+                   onError={(e) => { e.target.style.display='none'; e.target.parentElement.innerHTML=`<span style="color:#555;font-size:14px">${c.name[0]}</span>`; }} />
             </div>
             <div style={{fontSize:'8px', color: selectedChar.id === c.id ? '#0ff' : '#888', marginTop:'2px'}}>{c.name}</div>
           </div>
@@ -255,7 +269,7 @@ export default function App() {
             <div style={{display:'flex', flexDirection:'column', gap:'4px'}}>
               <div style={{display:'flex', gap:'2px'}}>
                 <a href={getYTLink()} target="_blank" rel="noreferrer" style={linkBtn('#f00')}>YouTube</a>
-                <button onClick={copyPrompt} style={{...linkBtn('#fc0'), background:'transparent', cursor:'pointer'}}>✨ AI指示</button>
+                <button onClick={copyPrompt} style={{...linkBtn('#fc0'), background:'transparent', cursor:'pointer'}}>✨ 指示コピー</button>
               </div>
               <a href={playerName ? `https://sfbuff.site/fighters/search?q=${playerName}` : "https://sfbuff.site/"} target="_blank" rel="noreferrer" style={linkBtn('#0ff')}>SFBuff</a>
             </div>
@@ -285,7 +299,7 @@ export default function App() {
               </div>
               <div style={inputGrid}>
                  <div><label style={miniLabel}>始動</label><input style={comboInput} value={item.start || ''} onFocus={() => setFocusField({type:'list', listKey:'charCombos', charId:myChar.id, index:idx, field:'start', default:item})} onChange={e => updateList('charCombos', myChar.id, idx, 'start', e.target.value)} /></div>
-                 <div><label style={miniLabel}>成功率%</label><input style={{...comboInput, color: (item.successRate||0) < 80 ? '#f44' : '#0f0'}} type="number" value={item.successRate || 100} onChange={e => updateList('charCombos', myChar.id, idx, 'successRate', e.target.value)} /></div>
+                 <div><label style={miniLabel}>成功%</label><input style={{...comboInput, color: (item.successRate||0) < 80 ? '#f44' : '#0f0'}} type="number" value={item.successRate || 100} onChange={e => updateList('charCombos', myChar.id, idx, 'successRate', e.target.value)} /></div>
                  <div><label style={miniLabel}>DMG</label><input style={comboInput} type="number" value={item.dmg || ''} onChange={e => updateList('charCombos', myChar.id, idx, 'dmg', e.target.value)} /></div>
               </div>
               <div style={{marginTop:'5px'}}><label style={miniLabel}>レシピ</label><textarea style={comboArea} value={item.content || ''} onFocus={() => setFocusField({type:'list', listKey:'charCombos', charId:myChar.id, index:idx, field:'content', default:item})} onChange={e => updateList('charCombos', myChar.id, idx, 'content', e.target.value)} /></div>
@@ -293,44 +307,20 @@ export default function App() {
           ))}</div>
         ) : activeTab === 'training' ? (
           <div>
-            <div style={sectionTitle}>🛠️ 練習課題 (成功率80%未満)</div>
-            {trainingList.length === 0 ? <div style={{color:'#666', fontSize:'11px'}}>現在課題はありません。コンボの成功率を下げるとここに出現します。</div> : 
+            <div style={sectionTitle}>🛠️ 課題 (成功率80%未満)</div>
+            {trainingList.length === 0 ? <div style={{color:'#666', fontSize:'11px'}}>課題はありません。</div> : 
               trainingList.map((item, idx) => (
                 <div key={idx} style={trainingCard}>
-                  <div style={{fontSize:'11px', color:'#fff'}}>{item.start || '始動不明'} ➔ {item.content}</div>
-                  <div style={{fontSize:'10px', color:'#f44', marginTop:'3px'}}>現在の成功率: {item.successRate}%</div>
+                  <div style={{fontSize:'11px', color:'#fff'}}>{item.start || '始動'} ➔ {item.content}</div>
+                  <div style={{fontSize:'10px', color:'#f44', marginTop:'3px'}}>成功率: {item.successRate}%</div>
                 </div>
               ))
             }
-            <textarea style={{...mainTextAreaStyle, height:'100px', marginTop:'15px'}} value={currentCharData.trainingNote || ''} onChange={e => updateChar('trainingNote', e.target.value)} placeholder="自由な練習メモ..." />
+            <textarea style={{...mainTextAreaStyle, height:'100px', marginTop:'15px'}} value={currentCharData.trainingNote || ''} onChange={e => updateChar('trainingNote', e.target.value)} placeholder="メモ..." />
           </div>
-        ) : activeTab === 'setplay' ? (
-          <div>{setplayList.map((item, idx) => (
-            <div key={idx} style={comboCardStyle}>
-              <div style={{display:'flex', gap:'8px', marginBottom:'8px'}}>
-                 <div style={{flex:2}}><label style={miniLabel}>締めパーツ</label><input style={comboInput} value={item.finisher || ''} onFocus={() => setFocusField({type:'list', listKey:'charSetplays', charId:myChar.id, index:idx, field:'finisher', default:item})} onChange={e => updateList('charSetplays', myChar.id, idx, 'finisher', e.target.value)} /></div>
-                 <div style={{flex:1}}><label style={miniLabel}>有利F</label><input style={{...comboInput, color:'#0f0'}} type="number" value={item.plusF || ''} onChange={e => updateList('charSetplays', myChar.id, idx, 'plusF', e.target.value)} /></div>
-              </div>
-              <textarea style={{...comboArea, height:'40px'}} placeholder="連携レシピ..." value={item.setup || ''} onFocus={() => setFocusField({type:'list', listKey:'charSetplays', charId:myChar.id, index:idx, field:'setup', default:item})} onChange={e => updateList('charSetplays', myChar.id, idx, 'setup', e.target.value)} />
-            </div>
-          ))}</div>
-        ) : activeTab === 'badHabits' ? (
-          <div>{habitsList.map((item, idx) => (
-            <div key={idx} style={{...comboCardStyle, borderLeft:'4px solid #f44'}}>
-              <div><label style={{...miniLabel, color:'#f44'}}>NG行動</label><input style={comboInput} value={item.ng || ''} onChange={e => {
-                const newList = [...habitsList]; newList[idx].ng = e.target.value; 
-                if(newList[newList.length-1].ng) newList.push({ng:'', solution:''});
-                updateMyData('badHabits', newList);
-              }} /></div>
-              <div style={{marginTop:'5px'}}><label style={{...miniLabel, color:'#0f0'}}>改善・意識</label><input style={comboInput} value={item.solution || ''} onChange={e => {
-                const newList = [...habitsList]; newList[idx].solution = e.target.value;
-                updateMyData('badHabits', newList);
-              }} /></div>
-            </div>
-          ))}</div>
         ) : activeTab === 'battle' ? (
           <div style={{display:'flex', flexDirection:'column', gap:'10px'}}>
-            <div style={battleSection}><div style={battleHeader}>🚫 NG & 改善</div>{habitsList.filter(b=>b.ng).map((b,i)=>(<div key={i} style={battleItem}><span style={{color:'#f44'}}>✕ {b.ng}</span> ➔ <span style={{color:'#0f0'}}>{b.solution}</span></div>))}</div>
+            <div style={battleSection}><div style={battleHeader}>🚫 NG</div>{habitsList.filter(b=>b.ng).map((b,i)=>(<div key={i} style={battleItem}><span style={{color:'#f44'}}>✕ {b.ng}</span> ➔ <span style={{color:'#0f0'}}>{b.solution}</span></div>))}</div>
             <div style={battleSection}><div style={battleHeader}>🧠 {selectedChar.name} 対策</div><div style={{whiteSpace:'pre-wrap', fontSize:'12px', color:'#eee'}}>{currentCharData.strategy || '未入力'}</div></div>
             <div style={battleSection}><div style={battleHeader}>⚡ {myChar.name} 連携</div>{setplayList.filter(s=>s.setup).map((s,i)=>(<div key={i} style={battleItem}><span style={{color:'#fc0'}}>[+{s.plusF}F]</span> {s.setup}</div>))}</div>
           </div>
