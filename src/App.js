@@ -1,8 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { LineChart, Line, ResponsiveContainer } from 'recharts';
-import { GoogleGenerativeAI } from "@google/generative-ai";
 
-// キャラクター定義
+/**
+ * IMPORTANT: To fix the "@google/generative-ai" not found error, 
+ * we will use a direct fetch approach to the Gemini API. 
+ * This removes the need for the external SDK and prevents build failures on Vercel.
+ */
+
 const CHARACTERS = [
   { name: 'リュウ', id: 'ryu' }, { name: 'ルーク', id: 'luke' }, { name: 'ジェイミー', id: 'jamie' },
   { name: '春麗', id: 'chun-li' }, { name: 'ガイル', id: 'guile' }, { name: 'キンバリー', id: 'kimberly' },
@@ -107,6 +111,18 @@ export default function App() {
     }
   };
 
+  /**
+   * Safe Environment Variable Access
+   */
+  const getApiKey = () => {
+    try {
+      // @ts-ignore
+      return (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GEMINI_API_KEY) || "";
+    } catch (e) {
+      return "";
+    }
+  };
+
   const handleAIAnalysis = async () => {
     if (!isAiUnlocked) {
       const pw = prompt("AI機能を解放するためのパスワードを入力してください。");
@@ -119,19 +135,7 @@ export default function App() {
       }
     }
 
-    // 環境変数の読み込みエラーを回避するため、プロセス・インポート・メタの安全なチェックを行う
-    let apiKey = "";
-    try {
-      // Vite環境での標準的な読み込み
-      apiKey = import.meta.env.VITE_GEMINI_API_KEY || "";
-    } catch (e) {
-      // Node系や旧環境でのフォールバック
-      try {
-        apiKey = process.env.VITE_GEMINI_API_KEY || "";
-      } catch (e2) {
-        apiKey = "";
-      }
-    }
+    const apiKey = getApiKey();
     
     if (!apiKey) {
       alert("APIキーが設定されていません。Vercelの環境変数(VITE_GEMINI_API_KEY)を確認してください。");
@@ -143,23 +147,30 @@ export default function App() {
 
     setIsAnalyzing(true);
     try {
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ 
-        model: "gemini-1.5-flash",
-        generationConfig: { responseMimeType: "application/json" } 
+      const systemPrompt = `SF6高度コーチとして、提供されたテキストから有用な情報を抽出してください。
+        必ず有効なJSON形式で返してください。
+        "strategy": 敵(${selectedChar.name})対策を日本語の箇条書きテキストとして
+        "combos": 自キャラ(${myChar.name})のコンボ配列 [{start: "始動技", content: "レシピ", dmg: "ダメージ(数値)"}]
+        "setplays": 自キャラ(${myChar.name})の連携配列 [{finisher: "締め技", setup: "連携内容"}]`;
+
+      const userQuery = `解析対象テキスト: "${rawText}"`;
+
+      // Use native fetch to avoid SDK dependency issues in build
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: `${systemPrompt}\n\n${userQuery}` }] }],
+          generationConfig: { responseMimeType: "application/json" }
+        })
       });
 
-      const promptText = `
-        SF6高度コーチとしてJSON形式で返してください。
-        "strategy": 敵(${selectedChar.name})対策を日本語の箇条書きで
-        "combos": 自キャラ(${myChar.name})のコンボ[{start, content, dmg}]
-        "setplays": 自キャラ(${myChar.name})の連携[{finisher, setup}]
-        テキスト: "${rawText}"
-      `;
-
-      const result = await model.generateContent(promptText);
-      const response = await result.response;
-      const dataObj = JSON.parse(response.text());
+      const result = await response.json();
+      const textResponse = result.candidates?.[0]?.content?.parts?.[0]?.text;
+      
+      if (!textResponse) throw new Error("No response from AI");
+      
+      const dataObj = JSON.parse(textResponse);
 
       if (dataObj.strategy) updateChar('strategy', dataObj.strategy);
       
@@ -178,7 +189,7 @@ export default function App() {
       alert("AI解析完了！");
     } catch (e) {
       console.error(e);
-      alert("解析に失敗しました。詳細はコンソールを確認してください。");
+      alert("解析に失敗しました。APIキーまたはネットワークを確認してください。");
     } finally {
       setIsAnalyzing(false);
     }
@@ -360,7 +371,6 @@ export default function App() {
   );
 }
 
-// スタイル定義
 const containerStyle = { display:'flex', flexDirection:'column', height:'100vh', background:'#050505', color:'#fff', overflow:'hidden' };
 const headerStyle = { display:'flex', justifyContent:'space-between', padding:'10px', background:'#111', alignItems:'center', borderBottom:'1px solid #333' };
 const nameInputStyle = { width:'60px', background:'#000', color:'#fff', border:'1px solid #444', fontSize:'10px', padding:'3px' };
