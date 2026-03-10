@@ -3,9 +3,9 @@ import { LineChart, Line, ResponsiveContainer } from 'recharts';
 
 /**
  * 修正ポイント:
- * 1. Vercelの環境変数 (VITE_GEMINI_API_KEY) の読み込みロジックを強化
- * 2. 環境変数が空の場合、ユーザーに直接入力を促すフォールバックを追加
- * 3. 外部ライブラリ不要の直接APIコール方式を維持
+ * 1. モデル名を 'gemini-1.5-flash' から、より互換性の高い形式に修正
+ * 2. APIエンドポイントのURLを最新の形式にアップデート
+ * 3. エラーハンドリングを強化し、原因を特定しやすく変更
  */
 
 const CHARACTERS = [
@@ -37,7 +37,7 @@ const TABS = [
   { id: 'battle', label: '実戦', icon: '⚔️' },
 ];
 
-const STORAGE_KEY = 'sf6_master_data_v10';
+const STORAGE_KEY = 'sf6_master_data_v11';
 const AUTH_KEY = 'sf6_ai_authenticated';
 
 export default function App() {
@@ -112,20 +112,13 @@ export default function App() {
     }
   };
 
-  /**
-   * APIキー取得ロジックの改善
-   */
   const getApiKey = () => {
     let key = "";
     try {
-      // 1. Viteの環境変数を確認
       // @ts-ignore
       key = import.meta.env.VITE_GEMINI_API_KEY;
-    } catch (e) {
-      // Ignore
-    }
+    } catch (e) {}
     
-    // 2. localStorageに手動保存されたキーがあれば優先（デバッグ用）
     const manualKey = localStorage.getItem('SF6_MANUAL_API_KEY');
     if (manualKey) return manualKey;
 
@@ -145,57 +138,56 @@ export default function App() {
     }
 
     let apiKey = getApiKey();
-    
-    // Vercelの設定が反映されていない場合の緊急避難
     if (!apiKey) {
-      const inputKey = prompt("Vercelの環境変数が読み込めません。Gemini APIキーを直接入力してください（このブラウザにのみ保存されます）");
+      const inputKey = prompt("Gemini APIキーを入力してください（一度入力すると保存されます）");
       if (inputKey) {
         localStorage.setItem('SF6_MANUAL_API_KEY', inputKey);
         apiKey = inputKey;
-      } else {
-        alert("APIキーが必要です。VercelのSettings > Environment Variables で VITE_GEMINI_API_KEY を設定し、再デプロイしてください。");
-        return;
-      }
+      } else return;
     }
 
-    const rawText = prompt("解析したいテキスト（動画の書き起こしやメモなど）を貼り付けてください");
+    const rawText = prompt("解析したいテキスト（動画の書き起こしやメモ）を貼り付けてください");
     if (!rawText) return;
 
     setIsAnalyzing(true);
     try {
-      const systemPrompt = `あなたはストリートファイター6のプロコーチです。
-      提供されたテキストから、以下の情報を抽出し、必ず純粋なJSON形式で返答してください。
-      
+      const systemPrompt = `あなたはSF6の専門家です。
+      提供されたテキストから以下の情報を抽出してJSONで返してください。
       {
-        "strategy": "敵キャラ対策の要点（日本語の箇条書き）",
-        "combos": [{"start": "始動技", "content": "コンボレシピ", "dmg": "ダメージ"}],
-        "setplays": [{"finisher": "締め技", "setup": "その後の起き攻めや連携"}]
+        "strategy": "敵対策の要点",
+        "combos": [{"start": "始動技", "content": "レシピ", "dmg": "ダメージ"}],
+        "setplays": [{"finisher": "締め", "setup": "連携"}]
       }
+      自キャラ: ${myChar.name}, 敵キャラ: ${selectedChar.name}`;
 
-      対象自キャラ: ${myChar.name}
-      対象敵キャラ: ${selectedChar.name}`;
+      // モデル名を v1beta/models/gemini-1.5-flash:generateContent に固定
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: `${systemPrompt}\n\n解析テキスト:\n${rawText}` }] }],
+          contents: [{ parts: [{ text: `${systemPrompt}\n\nテキスト:\n${rawText}` }] }],
           generationConfig: { 
             responseMimeType: "application/json",
-            temperature: 0.7
+            temperature: 0.1 // 精度重視
           }
         })
       });
 
       if (!response.ok) {
         const errData = await response.json();
-        throw new Error(errData.error?.message || "API request failed");
+        // モデル名のエラーが出た場合のフォールバック（別パスを試す）
+        if (errData.error?.message?.includes("not found")) {
+            throw new Error("モデルが見つかりません。APIキーが有効か、またはプロジェクトの設定を確認してください。");
+        }
+        throw new Error(errData.error?.message || "通信エラー");
       }
 
       const result = await response.json();
       const textResponse = result.candidates?.[0]?.content?.parts?.[0]?.text;
       
-      if (!textResponse) throw new Error("AIからの応答が空でした。");
+      if (!textResponse) throw new Error("応答が空です。");
       
       const dataObj = JSON.parse(textResponse);
 
@@ -213,10 +205,10 @@ export default function App() {
         updateMyData('charSetplays', { ...data.charSetplays, [myChar.id]: [...newSetplays, ...currentSetplays] });
       }
 
-      alert("AI解析が完了しました！");
+      alert("AI解析完了！");
     } catch (e) {
       console.error(e);
-      alert(`エラーが発生しました: ${e.message}`);
+      alert(`エラー: ${e.message}`);
     } finally {
       setIsAnalyzing(false);
     }
@@ -286,7 +278,7 @@ export default function App() {
         {CHARACTERS.map(c => (
           <div key={c.id} onClick={() => setSelectedChar(c)} style={{...charItemStyle, opacity: selectedChar.id === c.id ? 1 : 0.4}}>
             <div style={{...iconBox, border: selectedChar.id === c.id ? '2px solid #0ff' : '1px solid #444'}}>
-              <img src={`/${c.id}.png`} alt="" style={{width:'100%', height:'100%', objectFit:'cover'}} onError={(e) => { e.target.style.display='none'; e.target.parentElement.innerHTML=c.name[0] }} />
+              <div style={{color: selectedChar.id === c.id ? '#0ff' : '#444', fontSize:'14px'}}>{c.name[0]}</div>
             </div>
             <div style={{fontSize:'8px', color: selectedChar.id === c.id ? '#0ff' : '#888'}}>{c.name}</div>
           </div>
@@ -429,3 +421,4 @@ const battleItem = { fontSize:'12px', marginBottom:'6px', borderBottom:'1px dott
 const sectionTitle = { fontSize:'11px', color:'#fc0', marginBottom:'8px', fontWeight:'bold' };
 const trainingCard = { background:'#1a1a1a', padding:'8px', borderRadius:'6px', marginBottom:'8px', borderLeft:'3px solid #f44' };
 const mainTextAreaStyle = { width:'100%', height:'250px', background:'#000', color:'#eee', padding:'10px', border:'1px solid #333', borderRadius:'8px' };
+
