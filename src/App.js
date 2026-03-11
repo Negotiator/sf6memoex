@@ -79,6 +79,7 @@ export default function App() {
     const allLists = data[listKey] || {};
     const myList = [...(allLists[charId] || [defaultItem])];
     myList[index] = { ...myList[index], [field]: value };
+    // 入力が始まったら自動的に次の行を追加
     if (myList[myList.length - 1].content || myList[myList.length - 1].start || myList[myList.length - 1].setup || (listKey === 'badHabits' && myList[myList.length-1].ng)) {
       myList.push(defaultItem);
     }
@@ -87,15 +88,24 @@ export default function App() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(newData));
   };
 
-  // AI Core - エラー解消の決定版修正
+  // AI Core - エラーを解消するための決定的修正
   const callGemini = async (prompt, imageBase64 = null) => {
     if (!apiKey) { alert("APIキーを設定してください"); return null; }
     setIsAiLoading(true);
     try {
+      // APIバージョンを v1 に固定し、URLのモデル指定パスを厳密に定義
+      const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+
       const requestBody = {
         contents: [{
           parts: [{ text: prompt }]
-        }]
+        }],
+        generationConfig: {
+          temperature: 0.7,
+          topK: 40,
+          topP: 0.95,
+          maxOutputTokens: 2048,
+        }
       };
 
       if (imageBase64) {
@@ -107,8 +117,7 @@ export default function App() {
         });
       }
 
-      // エラーを回避するため v1beta を使いつつ、モデル指定のURL形式を調整
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+      const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody)
@@ -117,9 +126,11 @@ export default function App() {
       const resData = await response.json();
       
       if (resData.error) {
-        // 詳細なエラーをコンソールに出しつつアラート
-        console.error("Gemini API Error Detail:", resData.error);
-        throw new Error(resData.error.message || 'Unknown API Error');
+        throw new Error(`${resData.error.status}: ${resData.error.message}`);
+      }
+
+      if (!resData.candidates || resData.candidates.length === 0) {
+        throw new Error("AIからの応答が空でした。");
       }
 
       return resData.candidates[0].content.parts[0].text;
@@ -133,15 +144,15 @@ export default function App() {
   };
 
   const runAiTextAnalysis = async () => {
-    const prompt = `あなたはSF6の専属コーチです。以下のテキストを解析し、必ずJSON形式のみで回答してください。
-    形式: { "type": "strategy" | "combo" | "badHabit", "payload": { "content": "詳細内容" } }
+    const prompt = `あなたはSF6の戦術アナリストです。以下のテキストを読み取り、JSON形式で返してください。
+    出力形式: { "type": "strategy", "payload": { "content": "要約した内容" } }
     テキスト: ${aiInputText}`;
     const result = await callGemini(prompt);
     if (result) {
       try { 
         const jsonStr = result.replace(/```json|```/g, "").trim();
         setAiPreview(JSON.parse(jsonStr)); 
-      } catch (e) { alert("AI解析結果の読み取りに失敗しました。"); }
+      } catch (e) { alert("データの解析に失敗しました。"); }
     }
   };
 
@@ -149,9 +160,7 @@ export default function App() {
     if (!aiPreview) return;
     const { type, payload } = aiPreview;
     if (type === 'strategy') updateChar('strategy', (data[selectedChar.id]?.strategy || '') + "\n" + payload.content);
-    else if (type === 'combo') updateMyData('charCombos', { ...data.charCombos, [myChar.id]: [{start:'AI抽出', content: payload.content, successRate: 50}, ...(data.charCombos?.[myChar.id] || [])] });
-    else if (type === 'badHabit') updateMyData('badHabits', [{ng: payload.content, solution: "AIによる抽出"}, ...(data.badHabits || [])]);
-    setAiPreview(null); setShowAiModal(false); setAiInputText(''); alert("反映しました！");
+    setAiPreview(null); setShowAiModal(false); setAiInputText(''); alert("反映完了しました。");
   };
 
   const handleImageUpload = async (e) => {
@@ -160,7 +169,7 @@ export default function App() {
     const reader = new FileReader();
     reader.onloadend = async () => {
       const base64 = reader.result.split(',')[1];
-      const result = await callGemini("画像から各キャラの勝率を読み取り JSON { \"ryu\": 55, \"ken\": 48 } の形式で出力してください。", base64);
+      const result = await callGemini("画像から格闘ゲームの勝率データを読み取り、JSON形式 { \"charId\": 勝率 } で出力してください。IDは小文字英字です。", base64);
       if (result) {
         try {
           const winData = JSON.parse(result.replace(/```json|```/g, "").trim());
@@ -172,7 +181,7 @@ export default function App() {
           setData(newData);
           localStorage.setItem(STORAGE_KEY, JSON.stringify(newData));
           alert("勝率データを更新しました");
-        } catch (e) { alert("画像解析に失敗しました。"); }
+        } catch (e) { alert("勝率の解析に失敗しました。"); }
       }
     };
     reader.readAsDataURL(file);
@@ -217,8 +226,8 @@ export default function App() {
         </div>
         <div style={{display:'flex', gap:'4px'}}>
           <button onClick={() => setShowAiModal(true)} style={aiMainBtn}>✨ AI解析</button>
-          <button onClick={() => navigator.clipboard.writeText(JSON.stringify(data)).then(() => alert("コピーしました"))} style={backupBtnStyle}>💾</button>
-          <button onClick={() => { const i = prompt("復元データを貼り付け"); if(i){ try{ JSON.parse(i); localStorage.setItem(STORAGE_KEY, i); window.location.reload(); }catch(e){alert("ERROR")}} }} style={restoreBtnStyle}>📥</button>
+          <button onClick={() => navigator.clipboard.writeText(JSON.stringify(data)).then(() => alert("データをコピーしました"))} style={backupBtnStyle}>💾</button>
+          <button onClick={() => { const i = prompt("復元用データを貼り付けてください"); if(i){ try{ JSON.parse(i); localStorage.setItem(STORAGE_KEY, i); window.location.reload(); }catch(e){alert("データ形式が正しくありません")}} }} style={restoreBtnStyle}>📥</button>
         </div>
       </header>
 
@@ -238,7 +247,7 @@ export default function App() {
       </div>
 
       <main style={{flex:1, padding:'10px', overflowY:'auto'}}>
-        <button onClick={async () => { const res = await callGemini(`自キャラ:${myChar.name}, 敵キャラ:${selectedChar.name}。対策のアドバイスを熱く語って。`); if(res) alert(res); }} style={adviceBtn}>💡 AIコーチのアドバイス</button>
+        <button onClick={async () => { const res = await callGemini(`自キャラ:${myChar.name}, 敵キャラ:${selectedChar.name}。格ゲーコーチとして現在の状況から一言モチベの上がるアドバイスを。`); if(res) alert(res); }} style={adviceBtn}>💡 AIコーチの助言を受ける</button>
 
         {activeTab !== 'battle' && (
           <div style={winRowStyle}>
@@ -247,7 +256,7 @@ export default function App() {
                 <input style={winInput} value={newWinRate} onChange={e => setNewWinRate(e.target.value)} placeholder="%" type="number" />
                 <button onClick={() => { if(!newWinRate) return; updateChar('winRateRecords', [{ id: Date.now(), rate: parseFloat(newWinRate) }, ...(currentCharData.winRateRecords || [])].slice(0, 10)); setNewWinRate(''); }} style={saveBtnStyle}>記録</button>
               </div>
-              <div style={{height:'35px', marginTop:'5px'}}><ResponsiveContainer><LineChart data={[...(currentCharData.winRateRecords || [])].reverse()}><Line type="monotone" dataKey="rate" stroke="#0ff" dot={{r:2}} isAnimationActive={false} /></LineChart></ResponsiveContainer></div>
+              <div style={{height:'35px', marginTop:'5px'}}><ResponsiveContainer width="100%" height="100%"><LineChart data={[...(currentCharData.winRateRecords || [])].reverse()}><Line type="monotone" dataKey="rate" stroke="#0ff" dot={{r:2}} isAnimationActive={false} /></LineChart></ResponsiveContainer></div>
             </div>
             <div style={{display:'flex', flexDirection:'column', gap:'4px'}}>
               <a href={`https://www.youtube.com/results?search_query=スト6 ${selectedChar.name} 対策`} target="_blank" rel="noreferrer" style={linkBtn('#f00')}>YouTube</a>
@@ -265,13 +274,13 @@ export default function App() {
         {showAiModal && (
           <div style={modalOverlay}>
             <div style={modalContent}>
-              <h3>✨ AI解析モード</h3>
-              <textarea style={aiTextArea} value={aiInputText} onChange={e => setAiInputText(e.target.value)} placeholder="対策情報などを貼り付け..." />
+              <h3 style={{margin:'0 0 10px 0', fontSize:'14px'}}>✨ AI自動解析</h3>
+              <textarea style={aiTextArea} value={aiInputText} onChange={e => setAiInputText(e.target.value)} placeholder="対策テキストなどを貼り付けてください..." />
               <div style={{display:'flex', gap:'10px', marginTop:'10px'}}>
                 <button onClick={runAiTextAnalysis} style={aiActionBtn} disabled={isAiLoading}>{isAiLoading ? '解析中...' : '解析実行'}</button>
                 <button onClick={() => setShowAiModal(false)} style={cancelBtn}>閉じる</button>
               </div>
-              {aiPreview && <button onClick={applyAiData} style={applyBtn}>データ反映</button>}
+              {aiPreview && <button onClick={applyAiData} style={applyBtn}>この内容を対策メモに反映</button>}
             </div>
           </div>
         )}
@@ -287,18 +296,10 @@ export default function App() {
         {activeTab === 'badHabits' ? (
           <div>{habitsList.map((item, idx) => (
             <div key={idx} style={{...comboCardStyle, borderLeft:'4px solid #f44'}}>
-              <div><label style={{...miniLabel, color:'#f44'}}>🚫 NG行動</label>
-              <input style={comboInput} value={item.ng || ''} onChange={e => {
-                const newList = [...habitsList]; newList[idx].ng = e.target.value; 
-                if(newList[newList.length-1].ng || newList[newList.length-1].solution) newList.push({ng:'', solution:''});
-                updateMyData('badHabits', newList);
-              }} /></div>
-              <div style={{marginTop:'5px'}}><label style={{...miniLabel, color:'#0f0'}}>✅ 意識・改善法</label>
-              <input style={comboInput} value={item.solution || ''} onChange={e => {
-                const newList = [...habitsList]; newList[idx].solution = e.target.value;
-                if(newList[newList.length-1].ng || newList[newList.length-1].solution) newList.push({ng:'', solution:''});
-                updateMyData('badHabits', newList);
-              }} /></div>
+              <div><label style={{...miniLabel, color:'#f44'}}>🚫 やってしまう悪癖</label>
+              <input style={comboInput} value={item.ng || ''} onChange={e => updateList('badHabits', 'global', idx, 'ng', e.target.value, {ng:'', solution:''})} placeholder="例: 無敵技を擦りすぎる" /></div>
+              <div style={{marginTop:'8px'}}><label style={{...miniLabel, color:'#0f0'}}>✅ 意識すべき解決策</label>
+              <input style={comboInput} value={item.solution || ''} onChange={e => updateList('badHabits', 'global', idx, 'solution', e.target.value, {ng:'', solution:''})} placeholder="例: 遅らせグラップを徹底する" /></div>
             </div>
           ))}</div>
         ) : activeTab === 'myCombo' ? (
@@ -328,17 +329,20 @@ export default function App() {
           ))}</div>
         ) : activeTab === 'training' ? (
           <div>
-            <div style={{fontSize:'12px', color:'#fc0', marginBottom:'10px'}}>🎯 重点練習リスト</div>
-            {trainingList.map((item, i) => <div key={i} style={trainingCard}>{item.start} ➔ {item.content} ({item.successRate}%)</div>)}
-            <textarea style={mainTextAreaStyle} value={currentCharData.trainingNote || ''} onChange={e => updateChar('trainingNote', e.target.value)} placeholder="メモ..." />
+            <div style={{fontSize:'12px', color:'#fc0', marginBottom:'10px'}}>🏋️ 練習すべき重要コンボ</div>
+            {trainingList.map((item, i) => (
+              <div key={i} style={trainingCard}>{item.start} ➔ {item.content} (成功率: {item.successRate}%)</div>
+            ))}
+            <div style={{marginTop:'20px'}}><label style={miniLabel}>トレモメモ</label>
+            <textarea style={mainTextAreaStyle} value={currentCharData.trainingNote || ''} onChange={e => updateChar('trainingNote', e.target.value)} /></div>
           </div>
         ) : activeTab === 'battle' ? (
           <div style={{display:'flex', flexDirection:'column', gap:'10px'}}>
-             <div style={battleSection}><label style={miniLabel}>勝率画像の読込</label><input type="file" onChange={handleImageUpload} /></div>
-             <div style={battleSection}><label style={miniLabel}>🚫 意識すべき悪癖</label>
-               {habitsList.filter(b => b.ng).map((b, i) => <div key={i} style={battleItem}>{b.ng} ➔ {b.solution}</div>)}
+             <div style={battleSection}><label style={miniLabel}>勝率グラフ読込</label><input type="file" accept="image/*" onChange={handleImageUpload} /></div>
+             <div style={battleSection}><label style={miniLabel}>意識すべき悪癖</label>
+               {habitsList.filter(b => b.ng).map((b, i) => <div key={i} style={battleItem}>{b.ng} ➔ <span style={{color:'#0f0'}}>{b.solution}</span></div>)}
              </div>
-             <div style={battleSection}><label style={miniLabel}>🧠 対{selectedChar.name} 対策</label><div style={{whiteSpace:'pre-wrap'}}>{currentCharData.strategy}</div></div>
+             <div style={battleSection}><label style={miniLabel}>対{selectedChar.name} 対策メモ</label><div style={{whiteSpace:'pre-wrap', fontSize:'12px'}}>{currentCharData.strategy}</div></div>
           </div>
         ) : (
           <textarea style={mainTextAreaStyle} value={currentCharData[activeTab] || ''} onFocus={() => setFocusField({type:'main', field:activeTab})} onChange={e => updateChar(activeTab, e.target.value)} />
@@ -371,7 +375,7 @@ const cmdBtnStyle = { background:'#333', color:'#fff', border:'none', padding:'6
 const comboCardStyle = { background:'#111', padding:'12px', borderRadius:'8px', marginBottom:'10px', border:'1px solid #333' };
 const inputGrid = { display:'grid', gridTemplateColumns:'2fr 1fr 1fr', gap:'8px' };
 const comboInput = { width:'100%', background:'#000', color:'#fff', border:'1px solid #444', padding:'5px', fontSize:'11px', borderRadius:'3px' };
-const comboArea = { width:'100%', background:'#000', color:'#ccc', border:'1px solid #333', padding:'5px', height:'45px', fontSize:'11px', borderRadius:'3px' };
+const comboArea = { width:'100%', background:'#000', color:'#ccc', border:'1px solid #333', padding:'5px', height:'45px', fontSize:'11px', borderRadius:'3px', resize:'none' };
 const miniLabel = { fontSize:'8px', color:'#888', display:'block' };
 const miniBtnStyle = { border:'none', color:'#fff', fontSize:'8px', padding:'2px 6px', borderRadius:'3px' };
 const battleSection = { background:'#111', borderRadius:'8px', padding:'10px', border:'1px solid #222', marginBottom:'10px' };
