@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { LineChart, Line, ResponsiveContainer } from 'recharts';
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const CHARACTERS = [
   { name: 'リュウ', id: 'ryu' }, { name: 'ルーク', id: 'luke' }, { name: 'ジェイミー', id: 'jamie' },
@@ -32,6 +33,11 @@ const TABS = [
 
 const STORAGE_KEY = 'sf6_master_data_v10';
 
+// API初期化 (Vercelの環境変数推奨)
+const API_KEY = process.env.REACT_APP_GEMINI_API_KEY || "YOUR_KEY_HERE";
+const genAI = new GoogleGenerativeAI(API_KEY);
+const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
 export default function App() {
   const [selectedChar, setSelectedChar] = useState(CHARACTERS[0]);
   const [myChar, setMyChar] = useState(CHARACTERS[0]);
@@ -42,12 +48,10 @@ export default function App() {
   const [newWinRate, setNewWinRate] = useState('');
   const [focusField, setFocusField] = useState(null);
 
-  // AI States
-  const [apiKey, setApiKey] = useState(localStorage.getItem('gemini_api_key') || '');
-  const [isAiLoading, setIsAiLoading] = useState(false);
-  const [aiPreview, setAiPreview] = useState(null);
-  const [showAiModal, setShowAiModal] = useState(false);
-  const [aiInputText, setAiInputText] = useState('');
+  // AI用State
+  const [isAiProcessing, setIsAiProcessing] = useState(false);
+  const [aiAnalysisResult, setAiAnalysisResult] = useState(null);
+  const [aiAdvice, setAiAdvice] = useState("");
 
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -79,63 +83,12 @@ export default function App() {
     const allLists = data[listKey] || {};
     const myList = [...(allLists[charId] || [defaultItem])];
     myList[index] = { ...myList[index], [field]: value };
-    if (myList[myList.length - 1].content || myList[myList.length - 1].start || myList[myList.length - 1].setup || (listKey === 'badHabits' && myList[myList.length-1].ng)) {
+    if (myList[myList.length - 1].content || myList[myList.length - 1].start || myList[myList.length - 1].setup) {
       myList.push(defaultItem);
     }
     const newData = { ...data, [listKey]: { ...allLists, [charId]: myList } };
     setData(newData);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(newData));
-  };
-
-  const callGemini = async (prompt, imageBase64 = null) => {
-    if (!apiKey) { alert("APIキーを右上のフィールドに入力してください"); return null; }
-    setIsAiLoading(true);
-    try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
-      const requestBody = { contents: [{ parts: [{ text: prompt }] }] };
-      if (imageBase64) {
-        requestBody.contents[0].parts.push({ inline_data: { mime_type: "image/png", data: imageBase64 } });
-      }
-      const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(requestBody) });
-      const resData = await response.json();
-      if (resData.error) throw new Error(resData.error.message);
-      return resData.candidates[0].content.parts[0].text;
-    } catch (err) {
-      alert(`AIエラー: ${err.message}`); 
-      return null;
-    } finally {
-      setIsAiLoading(false);
-    }
-  };
-
-  const copyNotebookPrompt = () => {
-    const promptText = `格闘ゲームSF6の学習用ソースとして以下のデータを分析してください。
-【自キャラ】: ${myChar.name} (${controlType})
-【敵キャラ】: ${selectedChar.name}
-【対策メモ】: ${data[selectedChar.id]?.strategy || '未入力'}
-【コンボ】: ${(data.charCombos?.[myChar.id] || []).map(c => c.content).join(' / ')}
-【悪癖】: ${(data.badHabits || []).map(h => h.ng + '→' + h.solution).join('\n')}
-
-これらを元に、次回の対戦で意識すべき3つのポイントを整理して。`;
-    navigator.clipboard.writeText(promptText).then(() => alert("NotebookLM用プロンプトをコピーしました！"));
-  };
-
-  const runAiTextAnalysis = async () => {
-    const prompt = `SF6のコーチとして。以下のテキストから「対策」を抽出しJSONで返して。形式: { "type": "strategy", "payload": { "content": "..." } } テキスト: ${aiInputText}`;
-    const result = await callGemini(prompt);
-    if (result) {
-      try { 
-        const jsonStr = result.replace(/```json|```/g, "").trim();
-        setAiPreview(JSON.parse(jsonStr)); 
-      } catch (e) { alert("解析失敗"); }
-    }
-  };
-
-  const applyAiData = () => {
-    if (!aiPreview) return;
-    const { type, payload } = aiPreview;
-    if (type === 'strategy') updateChar('strategy', (data[selectedChar.id]?.strategy || '') + "\n" + payload.content);
-    setAiPreview(null); setShowAiModal(false); setAiInputText(''); alert("反映完了");
   };
 
   const insertCmd = (cmd) => {
@@ -144,7 +97,9 @@ export default function App() {
       const trimmed = current ? current.trim() : "";
       if (trimmed === "") return cmd;
       const lastPart = trimmed.split(' ').pop() || "";
-      if (lastPart.includes("AS") || /^[0-9]+$/.test(lastPart) || cmd === "TC" || lastPart === "OD") return `${trimmed}${cmd}`;
+      if (lastPart.includes("AS") || /^[0-9]+$/.test(lastPart) || cmd === "TC" || lastPart === "OD") {
+        return `${trimmed}${cmd}`;
+      }
       return `${trimmed} > ${cmd}`;
     };
     if (focusField.type === 'list') {
@@ -155,6 +110,146 @@ export default function App() {
     }
   };
 
+  // --- AI機能1: テキスト解析・振り分け ---
+  const analyzeText = async (text) => {
+    if (!text) return;
+    setIsAiProcessing(true);
+    const prompt = `
+      あなたはSF6のデータ整理アシスタントです。以下のテキストを解析し、適切なカテゴリーに分類してJSON形式で返してください。
+      【カテゴリー定義】
+      - strategy: 立ち回り、技対策
+      - myCombo: コンボレシピ（始動、ダメージ、レシピ）
+      - setplay: 起き攻め、連携（締めパーツ、有利F、内容）
+      - badHabits: 自分の悪い癖と改善策
+
+      【出力ルール】
+      JSONのみ出力してください。余計な説明は不要です。
+      {
+        "category": "strategy" | "myCombo" | "setplay" | "badHabits",
+        "data": { ... } // 各カテゴリーに応じたキー
+      }
+      入力: ${text}
+    `;
+
+    try {
+      const result = await model.generateContent(prompt);
+      const resText = result.response.text().replace(/```json|```/g, "").trim();
+      setAiAnalysisResult(JSON.parse(resText));
+    } catch (e) {
+      alert("解析エラーが発生しました。");
+    } finally {
+      setIsAiProcessing(false);
+    }
+  };
+
+  const applyAiResult = () => {
+    if (!aiAnalysisResult) return;
+    const { category, data: resData } = aiAnalysisResult;
+    
+    if (category === 'strategy') {
+      updateChar('strategy', (currentCharData.strategy || "") + "\n" + (resData.content || ""));
+    } else if (category === 'myCombo') {
+      const list = data.charCombos?.[myChar.id] || [];
+      updateList('charCombos', myChar.id, list.length - 1, 'content', resData.content, {});
+    }
+    // ... 他のカテゴリも同様に反映
+    setAiAnalysisResult(null);
+    alert("反映しました。");
+  };
+
+  // --- AI機能2: 勝率画像解析 ---
+  const analyzeWinRateImage = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setIsAiProcessing(true);
+
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      const base64Data = reader.result.split(',')[1];
+      const prompt = `この画像はSF6の戦績画面です。各キャラクターの「名前」と「勝率（%）」を読み取り、JSON形式 { "名前": 数値 } で出力してください。`;
+      
+      try {
+        const result = await model.generateContent([
+          prompt,
+          { inlineData: { data: base64Data, mimeType: file.type } }
+        ]);
+        const resJson = JSON.parse(result.response.text().replace(/```json|```/g, "").trim());
+        
+        const newData = { ...data };
+        Object.entries(resJson).forEach(([name, rate]) => {
+          const char = CHARACTERS.find(c => c.name === name);
+          if (char) {
+            const records = newData[char.id]?.winRateRecords || [];
+            if (!newData[char.id]) newData[char.id] = {};
+            newData[char.id].winRateRecords = [{ id: Date.now(), rate: parseFloat(rate) }, ...records].slice(0, 10);
+          }
+        });
+        setData(newData);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(newData));
+        alert("勝率を反映しました。");
+      } catch (err) {
+        alert("画像解析に失敗しました。");
+      } finally {
+        setIsAiProcessing(false);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // --- AI機能3: コーチングアドバイス ---
+  const generateAdvice = async () => {
+    setIsAiProcessing(true);
+    const context = {
+      myChar: myChar.name,
+      currentEnemy: selectedChar.name,
+      enemyWinRate: currentCharData.winRateRecords?.[0]?.rate,
+      lowSuccessCombos: trainingList,
+      badHabits: habitsList.filter(h => h.ng)
+    };
+
+    const prompt = `あなたはSF6のコーチです。以下のプレイヤーデータを見て、勝つためのアドバイスを100文字以内でズバリ言ってください。\n${JSON.stringify(context)}`;
+
+    try {
+      const result = await model.generateContent(prompt);
+      setAiAdvice(result.response.text());
+    } catch (e) {
+      setAiAdvice("今は集中して基礎を固めましょう。");
+    } finally {
+      setIsAiProcessing(false);
+    }
+  };
+
+  const copyPrompt = () => {
+    let prompt = "";
+    const base = `あなたはSF6の高度なコーチです。自キャラ:${myChar.name}(${controlType === 'C' ? 'クラシック' : 'モダン'})。`;
+    
+    switch(activeTab) {
+      case 'strategy':
+        prompt = `${base}敵キャラ:${selectedChar.name}。\n【最優先：敵キャラ対策の抽出】\nこの動画から、対敵キャラにおける立ち回り対策を抽出してください。\n\n・立ち回りの重要ポイント（要約）\n・主要な技への対処法や反撃ポイント\n\nこれらをアプリの「対策」欄に貼れるよう、簡潔な箇条書きでまとめてください。\n※前置き不要、内容のみ出力してください。`;
+        break;
+      case 'myCombo':
+        prompt = `${base}\n【最優先：実戦コンボの抽出】\nこの動画から実戦で使えるコンボを抽出してください。\n\n・形式：[始動技] ➔ [レシピ]\n・レシピ内は「 > 」で繋ぎ、DR, PC, OD, SA1~3などの略称を使用してください。\n\nそのままアプリに貼れるよう、余計な解説を省いて出力してください。`;
+        break;
+      case 'setplay':
+        prompt = `${base}\n【最優先：セットプレイ・連携の抽出】\nこの動画から強力な起き攻めや連携を抽出してください。\n\n・形式：[締めパーツ] 有利F：[数字]F ➔ [連携内容]\n\n簡潔に内容のみ出力してください。`;
+        break;
+      case 'badHabits':
+        prompt = `あなたはSF6の高度なコーチです。初心者〜中級者がやりがちな「負け筋」を分析します。\n【最優先：NG行動と改善策の抽出】\nこの動画（または一般的な${myChar.name}の負けパターン）から、改善すべき行動を抽出してください。\n\n・NG行動: [やってはいけない事]\n・改善法: [どうすべきか]\n\n各項目1行で、箇条書きで出力してください。`;
+        break;
+      default:
+        prompt = `${base}動画の内容を要約してください。`;
+    }
+    navigator.clipboard.writeText(prompt).then(() => alert("タブ専用プロンプトをコピーしました！"));
+  };
+
+  const getYTLink = () => {
+    let query = `スト6 ${selectedChar.name} 対策`;
+    if (activeTab === 'myCombo') query = `スト6 ${myChar.name} コンボ ${controlType === 'C' ? 'クラシック' : 'モダン'}`;
+    if (activeTab === 'setplay') query = `スト6 ${myChar.name} セットプレイ 連携`;
+    if (activeTab === 'badHabits') query = `スト6 勝ち方 NG行動 意識`;
+    return `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
+  };
+
   const currentCharData = data[selectedChar.id] || {};
   const comboList = data.charCombos?.[myChar.id] || [{start:'', content:'', hitType:'通常', location:'中央', difficulty:1, successRate:100, dmg:'', plusF:''}];
   const setplayList = data.charSetplays?.[myChar.id] || [{finisher:'', location:'中央', plusF:'', setup:'', note:''}];
@@ -163,6 +258,35 @@ export default function App() {
 
   return (
     <div style={containerStyle}>
+      {/* AI処理中オーバーレイ */}
+      {isAiProcessing && (
+        <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center', color:'#0ff'}}>
+          AI分析中...
+        </div>
+      )}
+
+      {/* AIアドバイス表示 */}
+      {aiAdvice && (
+        <div style={adviceStyle} onClick={() => setAiAdvice("")}>
+          💡 {aiAdvice} <span style={{fontSize:'8px', opacity:0.6}}>(閉じる)</span>
+        </div>
+      )}
+
+      {/* AI解析プレビュー */}
+      {aiAnalysisResult && (
+        <div style={modalStyle}>
+          <div style={modalContent}>
+            <h3>AI解析結果の確認</h3>
+            <p>カテゴリ: <strong>{aiAnalysisResult.category}</strong></p>
+            <pre style={{fontSize:'10px', background:'#000', padding:'10px'}}>{JSON.stringify(aiAnalysisResult.data, null, 2)}</pre>
+            <div style={{display:'flex', gap:'10px'}}>
+              <button onClick={applyAiResult} style={{flex:1, background:'#0ff', border:'none', padding:'10px'}}>反映</button>
+              <button onClick={() => setAiAnalysisResult(null)} style={{flex:1, background:'#555', border:'none', padding:'10px', color:'#fff'}}>キャンセル</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <header style={headerStyle}>
         <div style={{display:'flex', gap:'5px', alignItems:'center'}}>
           <input style={nameInputStyle} placeholder="ID" value={playerName} onChange={(e) => { setPlayerName(e.target.value); updateMyData('playerName', e.target.value); }} />
@@ -176,29 +300,44 @@ export default function App() {
           </div>
         </div>
         <div style={{display:'flex', gap:'4px'}}>
-          <button onClick={() => setShowAiModal(true)} style={aiMainBtn}>✨ AI</button>
-          <button onClick={() => navigator.clipboard.writeText(JSON.stringify(data)).then(() => alert("保存"))} style={backupBtnStyle}>💾</button>
-          <button onClick={() => { const i = prompt("復元"); if(i){ try{ JSON.parse(i); localStorage.setItem(STORAGE_KEY, i); window.location.reload(); }catch(e){alert("ERR")}} }} style={restoreBtnStyle}>📥</button>
+          <button onClick={generateAdvice} style={{background:'#111', border:'1px solid #0ff', color:'#0ff', padding:'4px', borderRadius:'4px', fontSize:'10px'}}>🎯</button>
+          <button onClick={() => navigator.clipboard.writeText(JSON.stringify(data)).then(() => alert("コピー"))} style={backupBtnStyle}>💾</button>
+          <button onClick={() => { const i = prompt("復元データを貼り付け"); if(i){ try{ JSON.parse(i); localStorage.setItem(STORAGE_KEY, i); window.location.reload(); }catch(e){alert("ERROR")}} }} style={restoreBtnStyle}>📥</button>
         </div>
       </header>
-
-      <div style={{padding:'2px 10px', background:'#222', display:'flex', justifyContent:'flex-end'}}>
-        <input type="password" value={apiKey} onChange={e => {setApiKey(e.target.value); localStorage.setItem('gemini_api_key', e.target.value);}} placeholder="API Key..." style={keyInputStyle} />
-      </div>
 
       <div style={charNavStyle}>
         {CHARACTERS.map(c => (
           <div key={c.id} onClick={() => setSelectedChar(c)} style={{...charItemStyle, opacity: selectedChar.id === c.id ? 1 : 0.4}}>
             <div style={{...iconBox, border: selectedChar.id === c.id ? '2px solid #0ff' : '1px solid #444'}}>
-              <img src={`/${c.id}.png`} alt="" style={{width:'100%', height:'100%', objectFit:'cover'}} onError={(e) => { e.target.style.display='none'; e.target.innerText=c.name[0] }} />
+              <img src={`/${c.id}.png`} alt="" style={{width:'100%', height:'100%', objectFit:'cover'}} onError={(e) => { e.target.style.display='none'; e.target.parentElement.innerHTML=c.name[0] }} />
             </div>
-            <div style={{fontSize:'8px'}}>{c.name}</div>
+            <div style={{fontSize:'8px', color: selectedChar.id === c.id ? '#0ff' : '#888'}}>{c.name}</div>
           </div>
         ))}
       </div>
 
       <main style={{flex:1, padding:'10px', overflowY:'auto'}}>
-        <button onClick={copyNotebookPrompt} style={notebookBtn}>📓 NotebookLM用プロンプトを生成</button>
+        {/* 勝率画像アップロード */}
+        <div style={{marginBottom:'10px'}}>
+           <label style={{...linkBtn('#fc0'), width:'100%', display:'block', cursor:'pointer'}}>
+             📊 勝率スクショを読み込む
+             <input type="file" accept="image/*" style={{display:'none'}} onChange={analyzeWinRateImage} />
+           </label>
+        </div>
+
+        {/* AIテキスト解析入力 */}
+        <div style={{marginBottom:'15px', background:'#111', padding:'10px', borderRadius:'8px'}}>
+          <textarea 
+            id="ai-text-input"
+            placeholder="動画の要約などを貼り付けてAI振り分け..." 
+            style={{width:'100%', height:'40px', background:'#000', border:'1px solid #333', color:'#fff', fontSize:'10px', padding:'5px'}} 
+          />
+          <button 
+            onClick={() => analyzeText(document.getElementById('ai-text-input').value)}
+            style={{width:'100%', background:'#066', border:'none', color:'#fff', fontSize:'10px', padding:'5px', marginTop:'5px'}}
+          >✨ AIで自動振り分け</button>
+        </div>
 
         {activeTab !== 'battle' && (
           <div style={winRowStyle}>
@@ -210,7 +349,10 @@ export default function App() {
               <div style={{height:'35px', marginTop:'5px'}}><ResponsiveContainer width="100%" height="100%"><LineChart data={[...(currentCharData.winRateRecords || [])].reverse()}><Line type="monotone" dataKey="rate" stroke="#0ff" dot={{r:2}} isAnimationActive={false} /></LineChart></ResponsiveContainer></div>
             </div>
             <div style={{display:'flex', flexDirection:'column', gap:'4px'}}>
-              <a href={`https://www.youtube.com/results?search_query=スト6 ${selectedChar.name} 対策`} target="_blank" rel="noreferrer" style={linkBtn('#f00')}>YouTube</a>
+              <div style={{display:'flex', gap:'2px'}}>
+                <a href={getYTLink()} target="_blank" rel="noreferrer" style={linkBtn('#f00')}>YouTube</a>
+                <button onClick={copyPrompt} style={{...linkBtn('#fc0'), background:'transparent', cursor:'pointer'}}>✨ AIプロンプト</button>
+              </div>
               <a href={playerName ? `https://sfbuff.site/fighters/search?q=${playerName}` : "https://sfbuff.site/"} target="_blank" rel="noreferrer" style={linkBtn('#0ff')}>SFBuff</a>
             </div>
           </div>
@@ -230,16 +372,7 @@ export default function App() {
           </div>
         )}
 
-        {activeTab === 'badHabits' ? (
-          <div>{habitsList.map((item, idx) => (
-            <div key={idx} style={{...comboCardStyle, borderLeft:'4px solid #f44'}}>
-              <div><label style={{...miniLabel, color:'#f44'}}>🚫 悪い癖</label>
-              <input style={comboInput} value={item.ng || ''} onChange={e => updateList('badHabits', 'global', idx, 'ng', e.target.value, {ng:'', solution:''})} /></div>
-              <div style={{marginTop:'8px'}}><label style={{...miniLabel, color:'#0f0'}}>✅ 改善案</label>
-              <input style={comboInput} value={item.solution || ''} onChange={e => updateList('badHabits', 'global', idx, 'solution', e.target.value, {ng:'', solution:''})} /></div>
-            </div>
-          ))}</div>
-        ) : activeTab === 'myCombo' ? (
+        {activeTab === 'myCombo' ? (
           <div>{comboList.map((item, idx) => (
             <div key={idx} style={comboCardStyle}>
               <div style={{display:'flex', justifyContent:'space-between', marginBottom:'8px'}}>
@@ -248,10 +381,10 @@ export default function App() {
               </div>
               <div style={inputGrid}>
                  <div><label style={miniLabel}>始動</label><input style={comboInput} value={item.start || ''} onFocus={() => setFocusField({type:'list', listKey:'charCombos', charId:myChar.id, index:idx, field:'start', default:item})} onChange={e => updateList('charCombos', myChar.id, idx, 'start', e.target.value)} /></div>
-                 <div><label style={miniLabel}>成功率%</label><input style={comboInput} type="number" value={item.successRate || ''} onChange={e => updateList('charCombos', myChar.id, idx, 'successRate', e.target.value)} /></div>
+                 <div><label style={miniLabel}>DMG</label><input style={comboInput} type="number" value={item.dmg || ''} onChange={e => updateList('charCombos', myChar.id, idx, 'dmg', e.target.value)} /></div>
                  <div><label style={miniLabel}>有利F</label><input style={{...comboInput, color:'#0f0'}} type="number" value={item.plusF || ''} onChange={e => updateList('charCombos', myChar.id, idx, 'plusF', e.target.value)} /></div>
               </div>
-              <textarea style={comboArea} value={item.content || ''} onFocus={() => setFocusField({type:'list', listKey:'charCombos', charId:myChar.id, index:idx, field:'content', default:item})} onChange={e => updateList('charCombos', myChar.id, idx, 'content', e.target.value)} />
+              <div style={{marginTop:'5px'}}><label style={miniLabel}>レシピ</label><textarea style={comboArea} value={item.content || ''} onFocus={() => setFocusField({type:'list', listKey:'charCombos', charId:myChar.id, index:idx, field:'content', default:item})} onChange={e => updateList('charCombos', myChar.id, idx, 'content', e.target.value)} /></div>
             </div>
           ))}</div>
         ) : activeTab === 'setplay' ? (
@@ -264,44 +397,59 @@ export default function App() {
               <textarea style={{...comboArea, height:'40px'}} placeholder="連携レシピ..." value={item.setup || ''} onFocus={() => setFocusField({type:'list', listKey:'charSetplays', charId:myChar.id, index:idx, field:'setup', default:item})} onChange={e => updateList('charSetplays', myChar.id, idx, 'setup', e.target.value)} />
             </div>
           ))}</div>
+        ) : activeTab === 'badHabits' ? (
+          <div>{habitsList.map((item, idx) => (
+            <div key={idx} style={{...comboCardStyle, borderLeft:'4px solid #f44'}}>
+              <div><label style={{...miniLabel, color:'#f44'}}>NG行動</label><input style={comboInput} value={item.ng || ''} onChange={e => {
+                const newList = [...habitsList]; newList[idx].ng = e.target.value; 
+                if(newList[newList.length-1].ng) newList.push({ng:'', solution:''});
+                updateMyData('badHabits', newList);
+              }} /></div>
+              <div style={{marginTop:'5px'}}><label style={{...miniLabel, color:'#0f0'}}>改善・意識</label><input style={comboInput} value={item.solution || ''} onChange={e => {
+                const newList = [...habitsList]; newList[idx].solution = e.target.value;
+                updateMyData('badHabits', newList);
+              }} /></div>
+            </div>
+          ))}</div>
         ) : activeTab === 'training' ? (
           <div>
-            <div style={{fontSize:'12px', color:'#fc0', marginBottom:'10px'}}>🏋️ 練習すべき重要コンボ</div>
-            {trainingList.map((item, i) => (
-              <div key={i} style={trainingCard}>{item.start} ➔ {item.content} (成功率: {item.successRate}%)</div>
+            <div style={sectionTitle}>⚔️ トレモ課題 (成功率80%未満)</div>
+            {trainingList.map((item, idx) => (
+              <div key={idx} style={trainingCard}>
+                <div style={{color:'#fff', fontSize:'12px'}}>{item.start} ➔ {item.content}</div>
+                <div style={{color:'#f44', fontSize:'10px'}}>成功率: {item.successRate}%</div>
+              </div>
             ))}
-            <textarea style={mainTextAreaStyle} value={currentCharData.trainingNote || ''} onChange={e => updateChar('trainingNote', e.target.value)} placeholder="トレモメモ..." />
+            <textarea style={mainTextAreaStyle} value={currentCharData.trainingNote || ''} onChange={e => updateChar('trainingNote', e.target.value)} placeholder="自由な練習メモ..." />
           </div>
         ) : activeTab === 'battle' ? (
           <div style={{display:'flex', flexDirection:'column', gap:'10px'}}>
-             <div style={battleSection}><label style={miniLabel}>🚫 意識すべき悪癖</label>
-               {habitsList.filter(b => b.ng).map((b, i) => <div key={i} style={battleItem}>{b.ng} ➔ <span style={{color:'#0f0'}}>{b.solution}</span></div>)}
-             </div>
-             <div style={battleSection}><label style={miniLabel}>🧠 対{selectedChar.name} 対策メモ</label><div style={{whiteSpace:'pre-wrap', fontSize:'12px'}}>{currentCharData.strategy}</div></div>
+            <div style={battleSection}>
+              <div style={battleHeader}>🚫 NG & 改善</div>
+              {habitsList.filter(b => b.ng).map((b, i) => (
+                <div key={i} style={battleItem}><span style={{color:'#f44'}}>✕ {b.ng}</span> ➔ <span style={{color:'#0f0'}}>{b.solution}</span></div>
+              ))}
+            </div>
+            <div style={battleSection}>
+              <div style={battleHeader}>🧠 {selectedChar.name} 対策</div>
+              <div style={{whiteSpace:'pre-wrap', fontSize:'12px', color:'#eee'}}>{currentCharData.strategy || '未入力'}</div>
+            </div>
+            <div style={battleSection}>
+              <div style={battleHeader}>⚡ {myChar.name} 連携</div>
+              {setplayList.filter(s => s.setup).map((s, i) => (
+                <div key={i} style={battleItem}><span style={{color:'#fc0'}}>[+{s.plusF}F]</span> {s.setup}</div>
+              ))}
+            </div>
           </div>
         ) : (
           <textarea style={mainTextAreaStyle} value={currentCharData[activeTab] || ''} onFocus={() => setFocusField({type:'main', field:activeTab})} onChange={e => updateChar(activeTab, e.target.value)} />
-        )}
-
-        {showAiModal && (
-          <div style={modalOverlay}>
-            <div style={modalContent}>
-              <h3 style={{margin:'0 0 10px 0', fontSize:'14px'}}>✨ AI解析</h3>
-              <textarea style={aiTextArea} value={aiInputText} onChange={e => setAiInputText(e.target.value)} placeholder="対策テキスト..." />
-              <div style={{display:'flex', gap:'10px', marginTop:'10px'}}>
-                <button onClick={runAiTextAnalysis} style={aiActionBtn} disabled={isAiLoading}>{isAiLoading ? '解析中...' : '実行'}</button>
-                <button onClick={() => setShowAiModal(false)} style={cancelBtn}>閉</button>
-              </div>
-              {aiPreview && <button onClick={applyAiData} style={applyBtn}>反映</button>}
-            </div>
-          </div>
         )}
       </main>
     </div>
   );
 }
 
-// Styles
+// スタイル定義
 const containerStyle = { display:'flex', flexDirection:'column', height:'100vh', background:'#050505', color:'#fff', overflow:'hidden' };
 const headerStyle = { display:'flex', justifyContent:'space-between', padding:'10px', background:'#111', alignItems:'center', borderBottom:'1px solid #333' };
 const nameInputStyle = { width:'60px', background:'#000', color:'#fff', border:'1px solid #444', fontSize:'10px', padding:'3px' };
@@ -324,19 +472,16 @@ const cmdBtnStyle = { background:'#333', color:'#fff', border:'none', padding:'6
 const comboCardStyle = { background:'#111', padding:'12px', borderRadius:'8px', marginBottom:'10px', border:'1px solid #333' };
 const inputGrid = { display:'grid', gridTemplateColumns:'2fr 1fr 1fr', gap:'8px' };
 const comboInput = { width:'100%', background:'#000', color:'#fff', border:'1px solid #444', padding:'5px', fontSize:'11px', borderRadius:'3px' };
-const comboArea = { width:'100%', background:'#000', color:'#ccc', border:'1px solid #333', padding:'5px', height:'45px', fontSize:'11px', borderRadius:'3px', resize:'none' };
+const comboArea = { width:'100%', background:'#000', color:'#ccc', border:'1px solid #333', padding:'5px', height:'45px', fontSize:'11px', borderRadius:'3px' };
 const miniLabel = { fontSize:'8px', color:'#888', display:'block' };
 const miniBtnStyle = { border:'none', color:'#fff', fontSize:'8px', padding:'2px 6px', borderRadius:'3px' };
-const battleSection = { background:'#111', borderRadius:'8px', padding:'10px', border:'1px solid #222', marginBottom:'10px' };
+const battleSection = { background:'#111', borderRadius:'8px', padding:'10px', border:'1px solid #222' };
+const battleHeader = { fontSize:'11px', fontWeight:'bold', color:'#0ff', marginBottom:'8px', borderBottom:'1px solid #333', paddingBottom:'4px' };
 const battleItem = { fontSize:'12px', marginBottom:'6px', borderBottom:'1px dotted #222', paddingBottom:'4px' };
+const sectionTitle = { fontSize:'11px', color:'#fc0', marginBottom:'8px', fontWeight:'bold' };
 const trainingCard = { background:'#1a1a1a', padding:'8px', borderRadius:'6px', marginBottom:'8px', borderLeft:'3px solid #f44' };
-const mainTextAreaStyle = { width:'100%', height:'200px', background:'#000', color:'#eee', padding:'10px', border:'1px solid #333', borderRadius:'8px' };
-const aiMainBtn = { background:'linear-gradient(45deg, #004, #008)', color:'#0ff', border:'1px solid #0ff', padding:'4px 8px', borderRadius:'4px', fontSize:'10px', fontWeight:'bold' };
-const keyInputStyle = { background:'transparent', border:'none', color:'#444', fontSize:'9px', textAlign:'right', width:'150px', outline:'none' };
-const modalOverlay = { position:'fixed', top:0, left:0, width:'100%', height:'100%', background:'rgba(0,0,0,0.85)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000 };
-const modalContent = { background:'#111', padding:'20px', borderRadius:'12px', width:'80%', maxWidth:'400px' };
-const aiTextArea = { width:'100%', height:'100px', background:'#000', color:'#fff', border:'1px solid #444', borderRadius:'4px', padding:'8px' };
-const aiActionBtn = { background:'#0ff', color:'#000', border:'none', padding:'8px', borderRadius:'4px', fontWeight:'bold' };
-const cancelBtn = { background:'transparent', color:'#888', border:'none' };
-const applyBtn = { background:'#0f0', color:'#000', border:'none', padding:'8px', borderRadius:'4px', width:'100%', marginTop:'10px', fontWeight:'bold' };
-const notebookBtn = { width:'100%', padding:'10px', background:'linear-gradient(90deg, #111, #222)', color:'#fc0', border:'1px solid #fc0', borderRadius:'8px', marginBottom:'12px', fontWeight:'bold', fontSize:'11px', cursor:'pointer' };
+const mainTextAreaStyle = { width:'100%', height:'250px', background:'#000', color:'#eee', padding:'10px', border:'1px solid #333', borderRadius:'8px' };
+
+const adviceStyle = { position:'fixed', bottom:'20px', left:'10px', right:'10px', background:'#033', border:'1px solid #0ff', padding:'15px', borderRadius:'10px', color:'#fff', fontSize:'12px', zIndex:1000, boxShadow:'0 0 15px rgba(0,255,255,0.3)' };
+const modalStyle = { position:'fixed', inset:0, background:'rgba(0,0,0,0.9)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:10000 };
+const modalContent = { background:'#222', padding:'20px', borderRadius:'10px', width:'80%', maxWidth:'400px' };
