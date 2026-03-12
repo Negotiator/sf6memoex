@@ -87,32 +87,16 @@ export default function App() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(newData));
   };
 
-  // AI Core - 最終エラー修正版
   const callGemini = async (prompt, imageBase64 = null) => {
-    if (!apiKey) { alert("APIキーを右上の隠しフィールドに入力してください"); return null; }
+    if (!apiKey) { alert("APIキーを右上のフィールドに入力してください"); return null; }
     setIsAiLoading(true);
     try {
-      // models/ の二重指定やパスの不一致を避ける最新の正規URL
       const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
-
-      const requestBody = {
-        contents: [{
-          parts: [{ text: prompt }]
-        }]
-      };
-
+      const requestBody = { contents: [{ parts: [{ text: prompt }] }] };
       if (imageBase64) {
-        requestBody.contents[0].parts.push({
-          inline_data: { mime_type: "image/png", data: imageBase64 }
-        });
+        requestBody.contents[0].parts.push({ inline_data: { mime_type: "image/png", data: imageBase64 } });
       }
-
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody)
-      });
-
+      const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(requestBody) });
       const resData = await response.json();
       if (resData.error) throw new Error(resData.error.message);
       return resData.candidates[0].content.parts[0].text;
@@ -124,7 +108,6 @@ export default function App() {
     }
   };
 
-  // NotebookLM用プロンプト生成（復元）
   const copyNotebookPrompt = () => {
     const promptText = `格闘ゲームSF6の学習用ソースとして以下のデータを分析してください。
 【自キャラ】: ${myChar.name} (${controlType})
@@ -133,12 +116,12 @@ export default function App() {
 【コンボ】: ${(data.charCombos?.[myChar.id] || []).map(c => c.content).join(' / ')}
 【悪癖】: ${(data.badHabits || []).map(h => h.ng + '→' + h.solution).join('\n')}
 
-これらを元に、次回の対戦で意識すべき3つのポイントをNotebookLMのソースとして整理して。`;
+これらを元に、次回の対戦で意識すべき3つのポイントを整理して。`;
     navigator.clipboard.writeText(promptText).then(() => alert("NotebookLM用プロンプトをコピーしました！"));
   };
 
   const runAiTextAnalysis = async () => {
-    const prompt = `SF6のコーチとして。以下のテキストから「対策」「コンボ」「悪癖」をJSON形式で抽出して。形式: { "type": "strategy", "payload": { "content": "..." } } テキスト: ${aiInputText}`;
+    const prompt = `SF6のコーチとして。以下のテキストから「対策」を抽出しJSONで返して。形式: { "type": "strategy", "payload": { "content": "..." } } テキスト: ${aiInputText}`;
     const result = await callGemini(prompt);
     if (result) {
       try { 
@@ -176,6 +159,7 @@ export default function App() {
   const comboList = data.charCombos?.[myChar.id] || [{start:'', content:'', hitType:'通常', location:'中央', difficulty:1, successRate:100, dmg:'', plusF:''}];
   const setplayList = data.charSetplays?.[myChar.id] || [{finisher:'', location:'中央', plusF:'', setup:'', note:''}];
   const habitsList = data.badHabits || [{ng:'', solution:''}];
+  const trainingList = comboList.filter(c => c.content && (parseInt(c.successRate) || 0) < 80);
 
   return (
     <div style={containerStyle}>
@@ -214,7 +198,6 @@ export default function App() {
       </div>
 
       <main style={{flex:1, padding:'10px', overflowY:'auto'}}>
-        {/* NotebookLMプロンプト生成ボタン（復元） */}
         <button onClick={copyNotebookPrompt} style={notebookBtn}>📓 NotebookLM用プロンプトを生成</button>
 
         {activeTab !== 'battle' && (
@@ -271,6 +254,24 @@ export default function App() {
               <textarea style={comboArea} value={item.content || ''} onFocus={() => setFocusField({type:'list', listKey:'charCombos', charId:myChar.id, index:idx, field:'content', default:item})} onChange={e => updateList('charCombos', myChar.id, idx, 'content', e.target.value)} />
             </div>
           ))}</div>
+        ) : activeTab === 'setplay' ? (
+          <div>{setplayList.map((item, idx) => (
+            <div key={idx} style={comboCardStyle}>
+              <div style={{display:'flex', gap:'8px', marginBottom:'8px'}}>
+                 <div style={{flex:2}}><label style={miniLabel}>締めパーツ</label><input style={comboInput} value={item.finisher || ''} onFocus={() => setFocusField({type:'list', listKey:'charSetplays', charId:myChar.id, index:idx, field:'finisher', default:item})} onChange={e => updateList('charSetplays', myChar.id, idx, 'finisher', e.target.value)} /></div>
+                 <div style={{flex:1}}><label style={miniLabel}>有利F</label><input style={{...comboInput, color:'#0f0'}} type="number" value={item.plusF || ''} onChange={e => updateList('charSetplays', myChar.id, idx, 'plusF', e.target.value)} /></div>
+              </div>
+              <textarea style={{...comboArea, height:'40px'}} placeholder="連携レシピ..." value={item.setup || ''} onFocus={() => setFocusField({type:'list', listKey:'charSetplays', charId:myChar.id, index:idx, field:'setup', default:item})} onChange={e => updateList('charSetplays', myChar.id, idx, 'setup', e.target.value)} />
+            </div>
+          ))}</div>
+        ) : activeTab === 'training' ? (
+          <div>
+            <div style={{fontSize:'12px', color:'#fc0', marginBottom:'10px'}}>🏋️ 練習すべき重要コンボ</div>
+            {trainingList.map((item, i) => (
+              <div key={i} style={trainingCard}>{item.start} ➔ {item.content} (成功率: {item.successRate}%)</div>
+            ))}
+            <textarea style={mainTextAreaStyle} value={currentCharData.trainingNote || ''} onChange={e => updateChar('trainingNote', e.target.value)} placeholder="トレモメモ..." />
+          </div>
         ) : activeTab === 'battle' ? (
           <div style={{display:'flex', flexDirection:'column', gap:'10px'}}>
              <div style={battleSection}><label style={miniLabel}>🚫 意識すべき悪癖</label>
@@ -300,7 +301,7 @@ export default function App() {
   );
 }
 
-// Styles (以前のデザインを完全維持)
+// Styles
 const containerStyle = { display:'flex', flexDirection:'column', height:'100vh', background:'#050505', color:'#fff', overflow:'hidden' };
 const headerStyle = { display:'flex', justifyContent:'space-between', padding:'10px', background:'#111', alignItems:'center', borderBottom:'1px solid #333' };
 const nameInputStyle = { width:'60px', background:'#000', color:'#fff', border:'1px solid #444', fontSize:'10px', padding:'3px' };
@@ -328,6 +329,7 @@ const miniLabel = { fontSize:'8px', color:'#888', display:'block' };
 const miniBtnStyle = { border:'none', color:'#fff', fontSize:'8px', padding:'2px 6px', borderRadius:'3px' };
 const battleSection = { background:'#111', borderRadius:'8px', padding:'10px', border:'1px solid #222', marginBottom:'10px' };
 const battleItem = { fontSize:'12px', marginBottom:'6px', borderBottom:'1px dotted #222', paddingBottom:'4px' };
+const trainingCard = { background:'#1a1a1a', padding:'8px', borderRadius:'6px', marginBottom:'8px', borderLeft:'3px solid #f44' };
 const mainTextAreaStyle = { width:'100%', height:'200px', background:'#000', color:'#eee', padding:'10px', border:'1px solid #333', borderRadius:'8px' };
 const aiMainBtn = { background:'linear-gradient(45deg, #004, #008)', color:'#0ff', border:'1px solid #0ff', padding:'4px 8px', borderRadius:'4px', fontSize:'10px', fontWeight:'bold' };
 const keyInputStyle = { background:'transparent', border:'none', color:'#444', fontSize:'9px', textAlign:'right', width:'150px', outline:'none' };
