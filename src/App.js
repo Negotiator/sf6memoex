@@ -15,7 +15,6 @@ const CHARACTERS = [
   { name: 'C.ヴァイパー', id: 'crimson-viper' }, { name: 'アレックス', id: 'alex' }, { name: 'イングリット', id: 'ingrid' }
 ].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
 
-// 勝率テキスト変換用マッピング（GOUKI, C.VIPER, E.HONDA対応）
 const NAME_MAP = {
   "GOUKI": "豪鬼", "AKUMA": "豪鬼",
   "C.VIPER": "C.ヴァイパー", "C. VIPER": "C.ヴァイパー",
@@ -81,7 +80,6 @@ export default function App() {
   };
 
   const updateMyData = (field, value) => saveToStorage({ ...data, [field]: value });
-
   const updateChar = (field, value) => {
     const charData = data[selectedChar.id] || {};
     saveToStorage({ ...data, [selectedChar.id]: { ...charData, [field]: value } });
@@ -130,36 +128,32 @@ export default function App() {
       }
     });
     saveToStorage(newData);
-    alert("勝率を反映しました。");
+    alert("更新しました");
   };
 
   const analyzeWinRateText = async (text) => {
     if (!text) return;
     setIsAiProcessing(true);
-    const prompt = `以下のテキストからキャラ名、試合数、勝率を抽出しJSON出力してください。ALLは名前"ALL"として抽出。入力: ${text}`;
     try {
-      const result = await model.generateContent(prompt);
+      const result = await model.generateContent(`以下からJSON抽出せよ。ALLは名前"ALL"。入力: ${text}`);
       const cleanJson = JSON.parse(result.response.text().replace(/```json|```/g, "").trim());
       processWinRates(cleanJson);
-    } catch (e) { alert("解析失敗"); }
+    } catch (e) { alert("失敗"); }
     finally { setIsAiProcessing(false); }
   };
 
   const generateAdvice = async () => {
     setIsAiProcessing(true);
-    const context = { myChar: myChar.name, enemy: selectedChar.name, global: data.globalStats };
     try {
-      const result = await model.generateContent(`SF6コーチとして助言せよ。${JSON.stringify(context)}`);
+      const result = await model.generateContent(`SF6コーチとして助言せよ。${JSON.stringify({my:myChar.name, enemy:selectedChar.name})}`);
       setAiAdvice(result.response.text());
-    } catch (e) { setAiAdvice("練習あるのみです。"); }
+    } catch (e) { setAiAdvice("継続しましょう"); }
     finally { setIsAiProcessing(false); }
   };
 
   const copyPrompt = () => {
-    let prompt = `この動画は${selectedChar.name}の「${TABS.find(t=>t.id===activeTab).label}」に関する情報です。整理してください。\n`;
-    const base = `あなたはSF6の高度なコーチです。自キャラ:${myChar.name}(${controlType === 'C' ? 'クラシック' : 'モダン'})。`;
-    prompt += base;
-    navigator.clipboard.writeText(prompt).then(() => alert("プロンプトをコピーしました！"));
+    let p = `動画情報を整理せよ。自キャラ:${myChar.name}(${controlType})。相手:${selectedChar.name}。`;
+    navigator.clipboard.writeText(p).then(() => alert("コピー完了"));
   };
 
   const currentCharData = data[selectedChar.id] || {};
@@ -186,7 +180,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* 追加：全体統計表示 */}
         <div style={globalStatsStyle}>
           <div style={statLabel}>TOTAL</div>
           <div style={statVal}>{data.globalStats?.matches || 0}戦 / {data.globalStats?.rate || 0}%</div>
@@ -194,8 +187,8 @@ export default function App() {
 
         <div style={{display:'flex', gap:'4px'}}>
           <button onClick={generateAdvice} style={circleBtn}>🎯</button>
-          <button onClick={() => navigator.clipboard.writeText(JSON.stringify(data)).then(() => alert("コピーしました"))} style={backupBtnStyle}>💾</button>
-          <button onClick={() => { const i = prompt("復元データを貼り付け"); if(i){ try{ JSON.parse(i); localStorage.setItem(STORAGE_KEY, i); window.location.reload(); }catch(e){alert("形式が正しくありません")}} }} style={restoreBtnStyle}>📥</button>
+          <button onClick={() => navigator.clipboard.writeText(JSON.stringify(data)).then(() => alert("コピー"))} style={backupBtnStyle}>💾</button>
+          <button onClick={() => { const i = prompt("復元データを貼り付け"); if(i){ try{ JSON.parse(i); localStorage.setItem(STORAGE_KEY, i); window.location.reload(); }catch(e){alert("失敗")}} }} style={restoreBtnStyle}>📥</button>
         </div>
       </header>
 
@@ -211,7 +204,6 @@ export default function App() {
       </div>
 
       <main style={{flex:1, padding:'10px', overflowY:'auto'}}>
-        {/* 追加：戦績テキスト読み込み */}
         <div style={aiPanel}>
            <button onClick={() => analyzeWinRateText(prompt("公式サイトの戦績テキストを貼り付け"))} style={aiExecBtn}>📋 公式サイト戦績を反映</button>
         </div>
@@ -240,7 +232,6 @@ export default function App() {
           <div style={paletteStyle}>{[...COMMON_CMDS, ...(controlType === 'C' ? CLASSIC_CMDS : MODERN_CMDS), ...SYSTEM_CMDS].map(cmd => (<button key={cmd} onClick={() => insertCmd(cmd)} style={cmdBtnStyle}>{cmd}</button>))}</div>
         )}
 
-        {/* 以下、全コンテンツロジック復元 */}
         {activeTab === 'myCombo' ? (
           <div>{comboList.map((item, idx) => (
             <div key={idx} style={comboCardStyle}>
@@ -276,25 +267,23 @@ export default function App() {
           ))}</div>
         ) : activeTab === 'training' ? (
           <div>
-            <div style={sectionTitle}>⚔️ トレモ課題 (成功率80%未満)</div>
-            {trainingList.map((item, idx) => (<div key={idx} style={trainingCard}><div style={{color:'#fff', fontSize:'12px'}}>{item.start} ➔ {item.content}</div><div style={{color:'#f44', fontSize:'10px'}}>成功率: {item.successRate}%</div></div>))}
-            <textarea style={mainTextAreaStyle} value={currentCharData.trainingNote || ''} onChange={e => updateChar('trainingNote', e.target.value)} placeholder="自由な練習メモ..." />
+            <div style={sectionTitle}>⚔️ トレモ課題</div>
+            {trainingList.map((item, idx) => (<div key={idx} style={trainingCard}><div style={{color:'#fff', fontSize:'12px'}}>{item.start} ➔ {item.content}</div></div>))}
+            <textarea style={mainTextAreaStyle} value={currentCharData.trainingNote || ''} onChange={e => updateChar('trainingNote', e.target.value)} placeholder="メモ..." />
           </div>
         ) : activeTab === 'battle' ? (
           <div style={{display:'flex', flexDirection:'column', gap:'10px'}}>
-            <div style={battleSection}><div style={battleHeader}>🚫 NG & 改善</div>{habitsList.filter(b => b.ng).map((b, i) => (<div key={i} style={battleItem}><span style={{color:'#f44'}}>✕ {b.ng}</span> ➔ <span style={{color:'#0f0'}}>{b.solution}</span></div>))}</div>
-            <div style={battleSection}><div style={battleHeader}>🧠 {selectedChar.name} 対策</div><div style={{whiteSpace:'pre-wrap', fontSize:'12px', color:'#eee'}}>{currentCharData.strategy || '未入力'}</div></div>
-            <div style={battleSection}><div style={battleHeader}>⚡ {myChar.name} 連携</div>{setplayList.filter(s => s.setup).map((s, i) => (<div key={i} style={battleItem}><span style={{color:'#fc0'}}>[+{s.plusF}F]</span> {s.setup}</div>))}</div>
+            <div style={battleSection}><div style={battleHeader}>🚫 NG</div>{habitsList.filter(b => b.ng).map((b, i) => (<div key={i} style={battleItem}>{b.ng} ➔ {b.solution}</div>))}</div>
+            <div style={battleSection}><div style={battleHeader}>🧠 対策</div><div style={{whiteSpace:'pre-wrap', fontSize:'12px'}}>{currentCharData.strategy}</div></div>
           </div>
         ) : (
-          <textarea style={mainTextAreaStyle} value={currentCharData.strategy || ''} onFocus={() => setFocusField({type:'main', field:'strategy'})} onChange={e => updateChar('strategy', e.target.value)} placeholder={`${selectedChar.name}対策メモ...`} />
+          <textarea style={mainTextAreaStyle} value={currentCharData.strategy || ''} onFocus={() => setFocusField({type:'main', field:'strategy'})} onChange={e => updateChar('strategy', e.target.value)} placeholder="対策メモ..." />
         )}
       </main>
     </div>
   );
 }
 
-// --- スタイル定義 (完全に維持・backupBtnStyle等も含む) ---
 const containerStyle = { display:'flex', flexDirection:'column', height:'100vh', background:'#050505', color:'#fff', overflow:'hidden' };
 const headerStyle = { display:'flex', justifyContent:'space-between', padding:'10px', background:'#111', alignItems:'center', borderBottom:'1px solid #333', gap:'10px' };
 const nameInputStyle = { width:'50px', background:'#000', color:'#fff', border:'1px solid #444', fontSize:'10px', padding:'3px' };
@@ -313,7 +302,7 @@ const winRowStyle = { display:'flex', gap:'10px', background:'#111', padding:'8p
 const winInput = { width:'40px', background:'#000', color:'#0f0', border:'1px solid #444', padding:'4px', fontSize:'12px' };
 const currentWinRateDisplay = { fontSize:'16px', fontWeight:'bold', color:'#0f0', minWidth:'45px', textAlign:'right' };
 const saveBtnStyle = { background:'#0ff', border:'none', borderRadius:'3px', fontSize:'10px', padding:'4px 10px', cursor:'pointer' };
-const linkBtn = (c) => ({ color:c, border:`1px solid ${c}`, padding:'3px 8px', borderRadius:'4px', fontSize:'10px', textDecoration:'none', textAlign:'center', display:'inline-block' };
+const linkBtn = (c) => ({ color:c, border:`1px solid ${c}`, padding:'3px 8px', borderRadius:'4px', fontSize:'10px', textDecoration:'none', textAlign:'center', display:'inline-block' });
 const tabGroupStyle = { display:'flex', gap:'2px', marginBottom:'10px' };
 const tabBtnStyle = { flex:1, padding:'10px 0', border:'1px solid #333', fontSize:'10px', cursor:'pointer' };
 const paletteStyle = { display:'flex', flexWrap:'wrap', gap:'3px', background:'#111', padding:'8px', borderRadius:'8px', marginBottom:'10px' };
