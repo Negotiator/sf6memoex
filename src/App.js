@@ -16,15 +16,13 @@ const CHARACTERS = [
 ].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
 
 const NAME_MAP = {
-  "GOUKI": "豪鬼", "AKUMA": "豪鬼",
-  "C.VIPER": "C.ヴァイパー", "C. VIPER": "C.ヴァイパー",
-  "E.HONDA": "E.本田", "E. HONDA": "E.本田",
-  "RYU": "リュウ", "LUKE": "ルーク", "JAMIE": "ジェイミー", "CHUN-LI": "春麗", "GUILE": "ガイル", 
-  "KIMBERLY": "キンバリー", "JURI": "ジュリ", "KEN": "ケン", "BLANKA": "ブランカ", 
-  "DHALSIM": "ダルシム", "DEE JAY": "ディージェイ", "MANON": "マノン", "MARISA": "マリーザ", 
-  "JP": "JP", "ZANGIEF": "ザンギエフ", "LILY": "リリー", "CAMMY": "キャミィ", "RASHID": "ラシード", 
-  "A.K.I.": "A.K.I.", "ED": "エド", "VEGA": "ベガ", "M. BISON": "ベガ", "TERRY": "テリー", 
-  "MAI": "舞", "ELENA": "エレナ", "SAGAT": "サガット", "ALEX": "アレックス", "INGRID": "イングリット"
+  "GOUKI": "豪鬼", "AKUMA": "豪鬼", "C.VIPER": "C.ヴァイパー", "C. VIPER": "C.ヴァイパー",
+  "E.HONDA": "E.本田", "E. HONDA": "E.本田", "RYU": "リュウ", "LUKE": "ルーク", "JAMIE": "ジェイミー", 
+  "CHUN-LI": "春麗", "GUILE": "ガイル", "KIMBERLY": "キンバリー", "JURI": "ジュリ", "KEN": "ケン", 
+  "BLANKA": "ブランカ", "DHALSIM": "ダルシム", "DEE JAY": "ディージェイ", "MANON": "マノン", 
+  "MARISA": "マリーザ", "JP": "JP", "ZANGIEF": "ザンギエフ", "LILY": "リリー", "CAMMY": "キャミィ", 
+  "RASHID": "ラシード", "A.K.I.": "A.K.I.", "ED": "エド", "VEGA": "ベガ", "M. BISON": "ベガ", 
+  "TERRY": "テリー", "MAI": "舞", "ELENA": "エレナ", "SAGAT": "サガット", "ALEX": "アレックス", "INGRID": "イングリット"
 };
 
 const COMMON_CMDS = ['5', '2', '6', '4', '8', '236', '214', '623', '41236', '63214'];
@@ -46,7 +44,7 @@ const TABS = [
 const STORAGE_KEY = 'sf6_master_data_v13';
 const API_KEY = process.env.REACT_APP_GEMINI_API_KEY || "YOUR_KEY_HERE";
 const genAI = new GoogleGenerativeAI(API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
 export default function App() {
   const [selectedChar, setSelectedChar] = useState(CHARACTERS[0]);
@@ -128,32 +126,40 @@ export default function App() {
       }
     });
     saveToStorage(newData);
-    alert("更新しました");
+    alert("勝率を反映しました。");
   };
 
   const analyzeWinRateText = async (text) => {
     if (!text) return;
     setIsAiProcessing(true);
+    const prompt = `以下のテキストからスト6のキャラ名、試合数、勝率を抽出し、純粋なJSON形式のみで出力してください。ALLセクションは名前"ALL"としてください。
+    出力例: { "RYU": {"matches": 100, "rate": 50.5}, "ALL": {"matches": 1000, "rate": 51.2} }
+    入力: ${text}`;
     try {
-      const result = await model.generateContent(`以下からJSON抽出せよ。ALLは名前"ALL"。入力: ${text}`);
+      const result = await model.generateContent(prompt);
       const cleanJson = JSON.parse(result.response.text().replace(/```json|```/g, "").trim());
       processWinRates(cleanJson);
-    } catch (e) { alert("失敗"); }
-    finally { setIsAiProcessing(false); }
+    } catch (e) { 
+      console.error(e);
+      alert("AI解析に失敗しました。"); 
+    } finally { setIsAiProcessing(false); }
   };
 
   const generateAdvice = async () => {
     setIsAiProcessing(true);
+    const context = `自キャラ: ${myChar.name}, 相手キャラ: ${selectedChar.name}, 自分の全体勝率: ${data.globalStats?.rate || '不明'}%
+    相手との直近勝率: ${data[selectedChar.id]?.winRateRecords?.[0]?.rate || 'データなし'}%。対策メモ: ${data[selectedChar.id]?.strategy || '未入力'}
+    この状況に基づき、一言アドバイスをください。`;
     try {
-      const result = await model.generateContent(`SF6コーチとして助言せよ。${JSON.stringify({my:myChar.name, enemy:selectedChar.name})}`);
+      const result = await model.generateContent(context);
       setAiAdvice(result.response.text());
-    } catch (e) { setAiAdvice("継続しましょう"); }
+    } catch (e) { setAiAdvice("練習あるのみです！"); }
     finally { setIsAiProcessing(false); }
   };
 
   const copyPrompt = () => {
-    let p = `動画情報を整理せよ。自キャラ:${myChar.name}(${controlType})。相手:${selectedChar.name}。`;
-    navigator.clipboard.writeText(p).then(() => alert("コピー完了"));
+    const p = `あなたはストリートファイター6のプロコーチです。自キャラ:${myChar.name}(${controlType})、相手キャラ:${selectedChar.name}。現在の「${TABS.find(t=>t.id===activeTab).label}」に関する情報を整理して、具体的な改善案を提案してください。`;
+    navigator.clipboard.writeText(p).then(() => alert("コーチング用プロンプトをコピーしました！"));
   };
 
   const currentCharData = data[selectedChar.id] || {};
@@ -186,8 +192,8 @@ export default function App() {
         </div>
 
         <div style={{display:'flex', gap:'4px'}}>
-          <button onClick={generateAdvice} style={circleBtn}>🎯</button>
-          <button onClick={() => navigator.clipboard.writeText(JSON.stringify(data)).then(() => alert("コピー"))} style={backupBtnStyle}>💾</button>
+          <button onClick={generateAdvice} style={circleBtn} title="AIアドバイス">🎯</button>
+          <button onClick={() => navigator.clipboard.writeText(JSON.stringify(data)).then(() => alert("コピーしました"))} style={backupBtnStyle}>💾</button>
           <button onClick={() => { const i = prompt("復元データを貼り付け"); if(i){ try{ JSON.parse(i); localStorage.setItem(STORAGE_KEY, i); window.location.reload(); }catch(e){alert("失敗")}} }} style={restoreBtnStyle}>📥</button>
         </div>
       </header>
@@ -205,7 +211,7 @@ export default function App() {
 
       <main style={{flex:1, padding:'10px', overflowY:'auto'}}>
         <div style={aiPanel}>
-           <button onClick={() => analyzeWinRateText(prompt("公式サイトの戦績テキストを貼り付け"))} style={aiExecBtn}>📋 公式サイト戦績を反映</button>
+           <button onClick={() => analyzeWinRateText(prompt("公式サイトの戦績テキストを貼り付け"))} style={aiExecBtn}>📋 公式サイト戦績を読み込む</button>
         </div>
 
         {activeTab !== 'battle' && (
@@ -232,6 +238,7 @@ export default function App() {
           <div style={paletteStyle}>{[...COMMON_CMDS, ...(controlType === 'C' ? CLASSIC_CMDS : MODERN_CMDS), ...SYSTEM_CMDS].map(cmd => (<button key={cmd} onClick={() => insertCmd(cmd)} style={cmdBtnStyle}>{cmd}</button>))}</div>
         )}
 
+        {/* --- タブコンテンツ --- */}
         {activeTab === 'myCombo' ? (
           <div>{comboList.map((item, idx) => (
             <div key={idx} style={comboCardStyle}>
@@ -255,7 +262,7 @@ export default function App() {
                  <div style={{flex:2}}><label style={miniLabel}>締め</label><input style={comboInput} value={item.finisher || ''} onFocus={() => setFocusField({type:'list', listKey:'charSetplays', charId:myChar.id, index:idx, field:'finisher', default:item})} onChange={e => updateList('charSetplays', myChar.id, idx, 'finisher', e.target.value)} /></div>
                  <div style={{flex:1}}><label style={miniLabel}>有利F</label><input style={{...comboInput, color:'#0f0'}} type="number" value={item.plusF || ''} onFocus={() => setFocusField({type:'list', listKey:'charSetplays', charId:myChar.id, index:idx, field:'plusF', default:item})} onChange={e => updateList('charSetplays', myChar.id, idx, 'plusF', e.target.value)} /></div>
               </div>
-              <textarea style={{...comboArea, height:'45px'}} placeholder="レシピ..." value={item.setup || ''} onFocus={() => setFocusField({type:'list', listKey:'charSetplays', charId:myChar.id, index:idx, field:'setup', default:item})} onChange={e => updateList('charSetplays', myChar.id, idx, 'setup', e.target.value)} />
+              <textarea style={{...comboArea, height:'45px'}} placeholder="連携レシピ..." value={item.setup || ''} onFocus={() => setFocusField({type:'list', listKey:'charSetplays', charId:myChar.id, index:idx, field:'setup', default:item})} onChange={e => updateList('charSetplays', myChar.id, idx, 'setup', e.target.value)} />
             </div>
           ))}</div>
         ) : activeTab === 'badHabits' ? (
@@ -267,23 +274,25 @@ export default function App() {
           ))}</div>
         ) : activeTab === 'training' ? (
           <div>
-            <div style={sectionTitle}>⚔️ トレモ課題</div>
-            {trainingList.map((item, idx) => (<div key={idx} style={trainingCard}><div style={{color:'#fff', fontSize:'12px'}}>{item.start} ➔ {item.content}</div></div>))}
-            <textarea style={mainTextAreaStyle} value={currentCharData.trainingNote || ''} onChange={e => updateChar('trainingNote', e.target.value)} placeholder="メモ..." />
+            <div style={sectionTitle}>⚔️ トレモ課題 (成功率80%未満)</div>
+            {trainingList.map((item, idx) => (<div key={idx} style={trainingCard}><div style={{color:'#fff', fontSize:'12px'}}>{item.start} ➔ {item.content}</div><div style={{color:'#f44', fontSize:'10px'}}>成功率: {item.successRate}%</div></div>))}
+            <textarea style={mainTextAreaStyle} value={currentCharData.trainingNote || ''} onChange={e => updateChar('trainingNote', e.target.value)} placeholder="自由な練習メモ..." />
           </div>
         ) : activeTab === 'battle' ? (
           <div style={{display:'flex', flexDirection:'column', gap:'10px'}}>
-            <div style={battleSection}><div style={battleHeader}>🚫 NG</div>{habitsList.filter(b => b.ng).map((b, i) => (<div key={i} style={battleItem}>{b.ng} ➔ {b.solution}</div>))}</div>
-            <div style={battleSection}><div style={battleHeader}>🧠 対策</div><div style={{whiteSpace:'pre-wrap', fontSize:'12px'}}>{currentCharData.strategy}</div></div>
+            <div style={battleSection}><div style={battleHeader}>🚫 NG & 改善</div>{habitsList.filter(b => b.ng).map((b, i) => (<div key={i} style={battleItem}><span style={{color:'#f44'}}>✕ {b.ng}</span> ➔ <span style={{color:'#0f0'}}>{b.solution}</span></div>))}</div>
+            <div style={battleSection}><div style={battleHeader}>🧠 {selectedChar.name} 対策</div><div style={{whiteSpace:'pre-wrap', fontSize:'12px', color:'#eee'}}>{currentCharData.strategy || '未入力'}</div></div>
+            <div style={battleSection}><div style={battleHeader}>⚡ {myChar.name} 連携</div>{setplayList.filter(s => s.setup).map((s, i) => (<div key={i} style={battleItem}><span style={{color:'#fc0'}}>[+{s.plusF}F]</span> {s.setup}</div>))}</div>
           </div>
         ) : (
-          <textarea style={mainTextAreaStyle} value={currentCharData.strategy || ''} onFocus={() => setFocusField({type:'main', field:'strategy'})} onChange={e => updateChar('strategy', e.target.value)} placeholder="対策メモ..." />
+          <textarea style={mainTextAreaStyle} value={currentCharData.strategy || ''} onFocus={() => setFocusField({type:'main', field:'strategy'})} onChange={e => updateChar('strategy', e.target.value)} placeholder={`${selectedChar.name}対策をメモ...`} />
         )}
       </main>
     </div>
   );
 }
 
+// --- スタイル定義 (完全に維持) ---
 const containerStyle = { display:'flex', flexDirection:'column', height:'100vh', background:'#050505', color:'#fff', overflow:'hidden' };
 const headerStyle = { display:'flex', justifyContent:'space-between', padding:'10px', background:'#111', alignItems:'center', borderBottom:'1px solid #333', gap:'10px' };
 const nameInputStyle = { width:'50px', background:'#000', color:'#fff', border:'1px solid #444', fontSize:'10px', padding:'3px' };
