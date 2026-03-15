@@ -3,7 +3,7 @@ import { LineChart, Line, ResponsiveContainer } from 'recharts';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const CHARACTERS = [
-  { name: 'ALL', id: 'all' }, // キャラクター欄の先頭にALLを追加
+  { name: 'ALL', id: 'all' }, // 追加：全体枠
   { name: 'リュウ', id: 'ryu' }, { name: 'ルーク', id: 'luke' }, { name: 'ジェイミー', id: 'jamie' },
   { name: '春麗', id: 'chun-li' }, { name: 'ガイル', id: 'guile' }, { name: 'キンバリー', id: 'kimberly' },
   { name: 'ジュリ', id: 'juri' }, { name: 'ケン', id: 'ken' }, { name: 'ブランカ', id: 'blanka' },
@@ -45,12 +45,12 @@ const TABS = [
 const STORAGE_KEY = 'sf6_master_data_v13';
 const API_KEY = process.env.REACT_APP_GEMINI_API_KEY || "YOUR_KEY_HERE";
 const genAI = new GoogleGenerativeAI(API_KEY);
-// モデルを Gemini 2.5 Flash に固定
+// Gemini 2.5 Flash に固定
 const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
 export default function App() {
   const [selectedChar, setSelectedChar] = useState(CHARACTERS[0]);
-  const [myChar, setMyChar] = useState(CHARACTERS[1]); // 初期値をALL以外にする
+  const [myChar, setMyChar] = useState(CHARACTERS[1]);
   const [controlType, setControlType] = useState('C');
   const [playerName, setPlayerName] = useState('');
   const [data, setData] = useState({});
@@ -112,6 +112,7 @@ export default function App() {
     }
   };
 
+  // 以前の成功していた解析ロジックを統合
   const processWinRates = (resJson) => {
     const newData = { ...data };
     Object.entries(resJson).forEach(([rawName, info]) => {
@@ -122,10 +123,10 @@ export default function App() {
       
       if (normalizedName === "ALL") {
         newData.globalStats = { matches, rate };
-        const allCharId = 'all';
-        if (!newData[allCharId]) newData[allCharId] = {};
-        const records = newData[allCharId].winRateRecords || [];
-        newData[allCharId].winRateRecords = [{ id: Date.now(), rate, matches }, ...records].slice(0, 10);
+        const allChar = CHARACTERS.find(c => c.id === 'all');
+        if (!newData[allChar.id]) newData[allChar.id] = {};
+        const records = newData[allChar.id].winRateRecords || [];
+        newData[allChar.id].winRateRecords = [{ id: Date.now(), rate, matches }, ...records].slice(0, 10);
       } else if (char) {
         if (!newData[char.id]) newData[char.id] = {};
         const records = newData[char.id].winRateRecords || [];
@@ -140,34 +141,35 @@ export default function App() {
     if (!text) return;
     setIsAiProcessing(true);
     const prompt = `以下の戦績テキストから、キャラ名、試合数、勝率を抽出してJSONのみ出力してください。
-    【重要ルール】
-    - 出力はJSONオブジェクトのみ。余計な説明は一切禁止。
-    - 全体合計値は必ずキー名を "ALL" にしてください。
-    - 書式: {"CHARACTER_NAME": {"matches": 100, "rate": 55.5}}
+    【ルール】
+    - 出力はJSONのみ。説明は不要。
+    - 全体合計は "ALL" というキー名に。
+    - 書式: {"キャラ名": {"matches": 数値, "rate": 数値}}
     入力: ${text}`;
     
     try {
       const result = await model.generateContent(prompt);
-      const cleanJson = JSON.parse(result.response.text().replace(/```json|```/g, "").trim());
+      const responseText = result.response.text();
+      const cleanJson = JSON.parse(responseText.replace(/```json|```/g, "").trim());
       processWinRates(cleanJson);
     } catch (e) { 
-      alert("AI解析に失敗しました。AIが正しい形式で回答できませんでした。"); 
+      alert("AI解析に失敗しました。正しい形式で抽出できません。"); 
     } finally { setIsAiProcessing(false); }
   };
 
   const generateAdvice = async () => {
     setIsAiProcessing(true);
-    const context = `自キャラ: ${myChar.name}, 相手: ${selectedChar.name}, 最近の勝率: ${data[selectedChar.id]?.winRateRecords?.[0]?.rate || '不明'}%, メモ: ${data[selectedChar.id]?.strategy || 'なし'}`;
+    const context = `自キャラ: ${myChar.name}, 相手: ${selectedChar.name}, メモ: ${data[selectedChar.id]?.strategy || 'なし'}`;
     try {
-      const result = await model.generateContent(`${context}。この状況に対する一言アドバイスを簡潔に生成してください。`);
+      const result = await model.generateContent(`${context}。この状況に対する短いアドバイスを一言で。`);
       setAiAdvice(result.response.text());
-    } catch (e) { setAiAdvice("さらなる対戦データを集めましょう。"); }
+    } catch (e) { setAiAdvice("データを蓄積しましょう。"); }
     finally { setIsAiProcessing(false); }
   };
 
   const copyPrompt = () => {
-    const p = `あなたはストリートファイター6の専門コーチです。自キャラ:${myChar.name}(${controlType})、相手:${selectedChar.name}。現在の「${TABS.find(t=>t.id===activeTab).label}」セクションに基づいて、勝ち筋を提示してください。`;
-    navigator.clipboard.writeText(p).then(() => alert("コピー完了"));
+    const p = `あなたはスト6コーチです。自キャラ:${myChar.name}(${controlType})、相手:${selectedChar.name}。改善案を出して。`;
+    navigator.clipboard.writeText(p).then(() => alert("プロンプトをコピーしました"));
   };
 
   const currentCharData = data[selectedChar.id] || {};
@@ -195,14 +197,14 @@ export default function App() {
         </div>
 
         <div style={globalStatsStyle}>
-          <div style={statLabel}>TOTAL (STATS)</div>
+          <div style={statLabel}>TOTAL</div>
           <div style={statVal}>{data.globalStats?.matches || 0}戦 / {data.globalStats?.rate || 0}%</div>
         </div>
 
         <div style={{display:'flex', gap:'4px'}}>
-          <button onClick={generateAdvice} style={circleBtn} title="アドバイス">🎯</button>
+          <button onClick={generateAdvice} style={circleBtn}>🎯</button>
           <button onClick={() => navigator.clipboard.writeText(JSON.stringify(data)).then(() => alert("コピー"))} style={backupBtnStyle}>💾</button>
-          <button onClick={() => { const i = prompt("復元データを貼り付け"); if(i){ try{ JSON.parse(i); localStorage.setItem(STORAGE_KEY, i); window.location.reload(); }catch(e){alert("失敗")}} }} style={restoreBtnStyle}>📥</button>
+          <button onClick={() => { const i = prompt("復元"); if(i){ try{ JSON.parse(i); localStorage.setItem(STORAGE_KEY, i); window.location.reload(); }catch(e){alert("失敗")}} }} style={restoreBtnStyle}>📥</button>
         </div>
       </header>
 
@@ -223,7 +225,7 @@ export default function App() {
 
       <main style={{flex:1, padding:'10px', overflowY:'auto'}}>
         <div style={aiPanel}>
-           <button onClick={() => analyzeWinRateText(prompt("戦績テキストを貼り付けてください"))} style={aiExecBtn}>📋 戦績データを同期</button>
+           <button onClick={() => analyzeWinRateText(prompt("公式サイトの戦績を貼り付け"))} style={aiExecBtn}>📋 戦績同期</button>
         </div>
 
         {activeTab !== 'battle' && (
@@ -250,7 +252,7 @@ export default function App() {
           <div style={paletteStyle}>{[...COMMON_CMDS, ...(controlType === 'C' ? CLASSIC_CMDS : MODERN_CMDS), ...SYSTEM_CMDS].map(cmd => (<button key={cmd} onClick={() => insertCmd(cmd)} style={cmdBtnStyle}>{cmd}</button>))}</div>
         )}
 
-        {/* --- タブコンテンツエリア --- */}
+        {/* --- メインコンテンツ --- */}
         {activeTab === 'myCombo' ? (
           <div>{comboList.map((item, idx) => (
             <div key={idx} style={comboCardStyle}>
@@ -288,7 +290,7 @@ export default function App() {
           <div>
             <div style={sectionTitle}>⚔️ トレモ課題 (成功率80%未満)</div>
             {trainingList.map((item, idx) => (<div key={idx} style={trainingCard}><div style={{color:'#fff', fontSize:'12px'}}>{item.start} ➔ {item.content}</div><div style={{color:'#f44', fontSize:'10px'}}>成功率: {item.successRate}%</div></div>))}
-            <textarea style={mainTextAreaStyle} value={currentCharData.trainingNote || ''} onChange={e => updateChar('trainingNote', e.target.value)} placeholder="自由メモ..." />
+            <textarea style={mainTextAreaStyle} value={currentCharData.trainingNote || ''} onChange={e => updateChar('trainingNote', e.target.value)} placeholder="練習メモ..." />
           </div>
         ) : activeTab === 'battle' ? (
           <div style={{display:'flex', flexDirection:'column', gap:'10px'}}>
@@ -296,14 +298,14 @@ export default function App() {
             <div style={battleSection}><div style={battleHeader}>🧠 {selectedChar.name} 対策</div><div style={{whiteSpace:'pre-wrap', fontSize:'12px', color:'#eee'}}>{currentCharData.strategy || '未入力'}</div></div>
           </div>
         ) : (
-          <textarea style={mainTextAreaStyle} value={currentCharData.strategy || ''} onFocus={() => setFocusField({type:'main', field:'strategy'})} onChange={e => updateChar('strategy', e.target.value)} placeholder={`${selectedChar.name}対策をメモ...`} />
+          <textarea style={mainTextAreaStyle} value={currentCharData.strategy || ''} onFocus={() => setFocusField({type:'main', field:'strategy'})} onChange={e => updateChar('strategy', e.target.value)} placeholder={`${selectedChar.name}対策...`} />
         )}
       </main>
     </div>
   );
 }
 
-// --- スタイル定義 (完全維持) ---
+// --- スタイル定義 (維持) ---
 const containerStyle = { display:'flex', flexDirection:'column', height:'100vh', background:'#050505', color:'#fff', overflow:'hidden' };
 const headerStyle = { display:'flex', justifyContent:'space-between', padding:'10px', background:'#111', alignItems:'center', borderBottom:'1px solid #333', gap:'10px' };
 const nameInputStyle = { width:'50px', background:'#000', color:'#fff', border:'1px solid #444', fontSize:'10px', padding:'3px' };
@@ -311,36 +313,36 @@ const selectStyle = { background:'#000', color:'#0ff', border:'1px solid #0ff', 
 const globalStatsStyle = { flex:1, textAlign:'center', background:'#222', padding:'4px', borderRadius:'4px', border:'1px dotted #444' };
 const statLabel = { fontSize:'7px', color:'#888' };
 const statVal = { fontSize:'11px', fontWeight:'bold', color:'#0f0' };
-const backupBtnStyle = { background:'#222', color:'#0ff', border:'1px solid #0ff', borderRadius:'4px', padding:'4px', cursor:'pointer' };
-const restoreBtnStyle = { background:'#222', color:'#fc0', border:'1px solid #fc0', borderRadius:'4px', padding:'4px', cursor:'pointer' };
+const backupBtnStyle = { background:'#222', color:'#0ff', border:'1px solid #0ff', borderRadius:'4px', padding:'4px' };
+const restoreBtnStyle = { background:'#222', color:'#fc0', border:'1px solid #fc0', borderRadius:'4px', padding:'4px' };
 const charNavStyle = { display:'flex', overflowX:'auto', padding:'10px', gap:'12px', background:'#000', borderBottom:'1px solid #222' };
 const charItemStyle = { display:'flex', flexDirection:'column', alignItems:'center', minWidth:'45px' };
 const iconBox = { width:'38px', height:'38px', borderRadius:'4px', overflow:'hidden', border:'1px solid #444', display:'flex', alignItems:'center', justifyContent:'center' };
 const aiPanel = { background:'#111', padding:'10px', borderRadius:'8px', marginBottom:'10px' };
-const aiExecBtn = { width:'100%', background:'#333', border:'1px solid #555', color:'#fff', padding:'8px', borderRadius:'4px', fontSize:'11px', cursor:'pointer' };
+const aiExecBtn = { width:'100%', background:'#333', border:'1px solid #555', color:'#fff', padding:'8px', borderRadius:'4px', fontSize:'11px' };
 const winRowStyle = { display:'flex', gap:'10px', background:'#111', padding:'8px', borderRadius:'8px', marginBottom:'10px', alignItems:'center' };
 const winInput = { width:'40px', background:'#000', color:'#0f0', border:'1px solid #444', padding:'4px', fontSize:'12px' };
 const currentWinRateDisplay = { fontSize:'16px', fontWeight:'bold', color:'#0f0', minWidth:'45px', textAlign:'right' };
-const saveBtnStyle = { background:'#0ff', border:'none', borderRadius:'3px', fontSize:'10px', padding:'4px 10px', cursor:'pointer' };
+const saveBtnStyle = { background:'#0ff', border:'none', borderRadius:'3px', fontSize:'10px', padding:'4px 10px' };
 const linkBtn = (c) => ({ color:c, border:`1px solid ${c}`, padding:'3px 8px', borderRadius:'4px', fontSize:'10px', textDecoration:'none', textAlign:'center', display:'inline-block' });
 const tabGroupStyle = { display:'flex', gap:'2px', marginBottom:'10px' };
-const tabBtnStyle = { flex:1, padding:'10px 0', border:'1px solid #333', fontSize:'10px', cursor:'pointer' };
+const tabBtnStyle = { flex:1, padding:'10px 0', border:'1px solid #333', fontSize:'10px' };
 const paletteStyle = { display:'flex', flexWrap:'wrap', gap:'3px', background:'#111', padding:'8px', borderRadius:'8px', marginBottom:'10px' };
-const cmdBtnStyle = { background:'#333', color:'#fff', border:'none', padding:'6px 8px', borderRadius:'4px', fontSize:'10px', cursor:'pointer' };
+const cmdBtnStyle = { background:'#333', color:'#fff', border:'none', padding:'6px 8px', borderRadius:'4px', fontSize:'10px' };
 const comboCardStyle = { background:'#111', padding:'12px', borderRadius:'8px', marginBottom:'10px', border:'1px solid #333' };
 const inputGrid = { display:'grid', gridTemplateColumns:'2fr 1fr 1fr', gap:'8px' };
-const comboInput = { width:'100%', background:'#000', color:'#fff', border:'1px solid #444', padding:'5px', fontSize:'11px', borderRadius:'3px' };
-const comboArea = { width:'100%', background:'#000', color:'#ccc', border:'1px solid #333', padding:'5px', height:'45px', fontSize:'11px', borderRadius:'3px' };
+const comboInput = { width:'100%', background:'#000', color:'#fff', border:'1px solid #444', padding:'5px', fontSize:'11px' };
+const comboArea = { width:'100%', background:'#000', color:'#ccc', border:'1px solid #333', padding:'5px', height:'45px', fontSize:'11px' };
 const miniLabel = { fontSize:'8px', color:'#888', display:'block' };
-const miniBtnStyle = { border:'none', color:'#fff', fontSize:'8px', padding:'2px 6px', borderRadius:'3px', cursor:'pointer' };
-const mainTextAreaStyle = { width:'100%', height:'250px', background:'#000', color:'#eee', padding:'10px', border:'1px solid #333', borderRadius:'8px' };
-const aiOverlay = { position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center', color:'#0ff', fontSize:'14px' };
+const miniBtnStyle = { border:'none', color:'#fff', fontSize:'8px', padding:'2px 6px', borderRadius:'3px' };
+const mainTextAreaStyle = { width:'100%', height:'250px', background:'#000', color:'#eee', padding:'10px', border:'1px solid #333' };
+const aiOverlay = { position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center', color:'#0ff' };
 const adviceStyle = { position:'fixed', bottom:'20px', left:'10px', right:'10px', background:'#022', border:'1px solid #0ff', padding:'12px', borderRadius:'8px', color:'#fff', fontSize:'11px', zIndex:1000 };
-const circleBtn = { background:'transparent', border:'1px solid #0ff', color:'#0ff', borderRadius:'50%', width:'24px', height:'24px', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'12px', cursor:'pointer' };
+const circleBtn = { background:'transparent', border:'1px solid #0ff', color:'#0ff', borderRadius:'50%', width:'24px', height:'24px', display:'flex', alignItems:'center', justifyContent:'center' };
 const controlToggleStyle = { display:'flex', background:'#000', borderRadius:'4px', padding:'1px', border:'1px solid #333' };
-const toggleBtn = { border:'none', fontSize:'9px', padding:'2px 6px', borderRadius:'2px', cursor:'pointer' };
+const toggleBtn = { border:'none', fontSize:'9px', padding:'2px 6px' };
 const battleSection = { background:'#111', borderRadius:'8px', padding:'10px', border:'1px solid #222', marginBottom:'10px' };
-const battleHeader = { fontSize:'11px', fontWeight:'bold', color:'#0ff', marginBottom:'8px', borderBottom:'1px solid #333', paddingBottom:'4px' };
-const battleItem = { fontSize:'12px', marginBottom:'6px', borderBottom:'1px dotted #222', paddingBottom:'4px' };
-const sectionTitle = { fontSize:'11px', color:'#fc0', marginBottom:'8px', fontWeight:'bold' };
+const battleHeader = { fontSize:'11px', fontWeight:'bold', color:'#0ff', marginBottom:'8px', borderBottom:'1px solid #333' };
+const battleItem = { fontSize:'12px', marginBottom:'6px' };
+const sectionTitle = { fontSize:'11px', color:'#fc0', marginBottom:'8px' };
 const trainingCard = { background:'#1a1a1a', padding:'8px', borderRadius:'6px', marginBottom:'8px', borderLeft:'3px solid #f44' };
