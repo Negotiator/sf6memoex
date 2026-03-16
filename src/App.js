@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LineChart, Line, ResponsiveContainer } from 'recharts';
+// 未使用のインポート（LineChart, Line, ResponsiveContainer）を削除
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const CHARACTERS = [
@@ -16,15 +16,7 @@ const CHARACTERS = [
   { name: 'C.ヴァイパー', id: 'crimson-viper' }, { name: 'アレックス', id: 'alex' }, { name: 'イングリット', id: 'ingrid' }
 ].sort((a, b) => a.id === 'all' ? -1 : b.id === 'all' ? 1 : a.name.localeCompare(b.name, 'ja'));
 
-const NAME_MAP = {
-  "ALL": "ALL", "GOUKI": "豪鬼", "AKUMA": "豪鬼", "C.VIPER": "C.ヴァイパー", "C. VIPER": "C.ヴァイパー",
-  "E.HONDA": "E.本田", "E. HONDA": "E.本田", "RYU": "リュウ", "LUKE": "ルーク", "JAMIE": "ジェイミー", 
-  "CHUN-LI": "春麗", "GUILE": "ガイル", "KIMBERLY": "キンバリー", "JURI": "ジュリ", "KEN": "ケン", 
-  "BLANKA": "ブランカ", "DHALSIM": "ダルシム", "DEE JAY": "ディージェイ", "MANON": "マノン", 
-  "MARISA": "マリーザ", "JP": "JP", "ZANGIEF": "ザンギエフ", "LILY": "リリー", "CAMMY": "キャミィ", 
-  "RASHID": "ラシード", "A.K.I.": "A.K.I.", "ED": "エド", "VEGA": "ベガ", "M. BISON": "ベガ", 
-  "TERRY": "テリー", "MAI": "舞", "ELENA": "エレナ", "SAGAT": "サガット", "ALEX": "アレックス", "INGRID": "イングリット"
-};
+// NAME_MAP は現状使用されていないため削除
 
 const COMMON_CMDS = ['5', '2', '6', '4', '8', '236', '214', '623', '41236', '63214'];
 const CLASSIC_CMDS = ['LP', 'MP', 'HP', 'LK', 'MK', 'HK'];
@@ -38,12 +30,11 @@ const TABS = [
   { id: 'myCombo', label: 'コンボ', icon: '💎' },
   { id: 'setplay', label: '連携', icon: '⚡' },
   { id: 'badHabits', label: '悪癖', icon: '🚫' },
-  { id: 'replay', label: 'リプレイ', icon: '📹' }, // 追加
+  { id: 'replay', label: 'リプレイ', icon: '📹' },
   { id: 'training', label: 'トレモ', icon: '🛠️' },
   { id: 'battle', label: '実戦', icon: '⚔️' },
 ];
 
-// チェックリストの定義
 const CHECKLIST_ITEMS = [
   { id: 'okizeme_miss', label: '起き攻めミス(2回以上)', category: '起き攻め' },
   { id: 'combo_miss', label: 'コンボミス・リーサル逃し', category: 'コンボ' },
@@ -56,7 +47,8 @@ const CHECKLIST_ITEMS = [
 const STORAGE_KEY = 'sf6_master_data_v15';
 const API_KEY = process.env.REACT_APP_GEMINI_API_KEY || "YOUR_KEY_HERE";
 const genAI = new GoogleGenerativeAI(API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+// model は AI解析ロジック実装時に使用するため、一旦残す場合は活用箇所が必要ですが、
+// エラー回避のため宣言を削除するか、解析関数内で定義するようにします。
 
 export default function App() {
   const [selectedChar, setSelectedChar] = useState(CHARACTERS[0]);
@@ -67,9 +59,9 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('strategy');
   const [newWinRate, setNewWinRate] = useState('');
   const [focusField, setFocusField] = useState(null);
-  const [isAiProcessing, setIsAiProcessing] = useState(false);
+  const [isAiProcessing] = useState(false); // setIsAiProcessing を削除
   const [aiAdvice, setAiAdvice] = useState("");
-  const [showReadingTable, setShowReadingTable] = useState(false); // 読み合い表の表示切替
+  const [showReadingTable, setShowReadingTable] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -123,7 +115,6 @@ export default function App() {
     }
   };
 
-  // YouTube検索リンクの修正
   const getYTLink = () => {
     let query = `スト6 ${selectedChar.name} 対策`;
     if (activeTab === 'myCombo') query = `${myChar.name} コンボ`;
@@ -140,7 +131,6 @@ export default function App() {
   const habitsList = data.badHabits || [{ng:'', solution:''}];
   const checklist = data.checklist || {};
 
-  // チェックされた項目を抽出
   const checkedTrainingItems = CHECKLIST_ITEMS.filter(item => checklist[item.id]);
   const trainingList = comboList.filter(c => c.content && (parseInt(c.successRate) || 0) < 80);
 
@@ -149,6 +139,7 @@ export default function App() {
     updateMyData('checklist', newChecklist);
   };
 
+  // スタイル等は省略せず全て維持
   return (
     <div style={containerStyle}>
       {isAiProcessing && <div style={aiOverlay}>AI解析中...</div>}
@@ -203,7 +194,6 @@ export default function App() {
 
         <div style={tabGroupStyle}>{TABS.map(t => (<button key={t.id} onClick={() => setActiveTab(t.id)} style={{...tabBtnStyle, color: activeTab === t.id ? '#0ff' : '#666', background: activeTab === t.id ? '#222' : '#000'}}>{t.icon} {t.label}</button>))}</div>
 
-        {/* コンテンツ */}
         {activeTab === 'replay' ? (
           <div>
             <div style={sectionTitle}>📹 リプレイ確認ポイント</div>
@@ -304,12 +294,10 @@ export default function App() {
   );
 }
 
-// --- スタイル定義 (追加分) ---
+// スタイル定数はそのまま（変更なし）
 const readingTableStyle = { width:'100%', borderCollapse:'collapse', fontSize:'10px', textAlign:'center', color:'#fff' };
 const thStyle = { border:'1px solid #333', padding:'4px', background:'#222', color:'#fc0' };
 const tdStyle = { border:'1px solid #333', padding:'4px', background:'#000', fontWeight:'bold' };
-
-// --- 既存スタイル (維持) ---
 const containerStyle = { display:'flex', flexDirection:'column', height:'100vh', background:'#050505', color:'#fff', overflow:'hidden' };
 const headerStyle = { display:'flex', justifyContent:'space-between', padding:'10px', background:'#111', alignItems:'center', borderBottom:'1px solid #333', gap:'10px' };
 const nameInputStyle = { width:'50px', background:'#000', color:'#fff', border:'1px solid #444', fontSize:'10px', padding:'3px' };
