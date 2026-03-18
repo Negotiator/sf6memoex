@@ -170,8 +170,28 @@ export default function App() {
   };
 
   const copyPrompt = () => {
-    const p = `あなたはスト6コーチです。自キャラ:${myChar.name}(${controlType})、相手:${selectedChar.name}。改善案を出して。`;
-    navigator.clipboard.writeText(p).then(() => alert("プロンプトをコピーしました"));
+    let promptText = "";
+    const base = `あなたはSF6の高度なコーチです。自キャラ:${myChar.name}(${controlType === 'C' ? 'クラシック' : 'モダン'})。`;
+    switch(activeTab) {
+      case 'strategy':
+        promptText = `${base}敵キャラ:${selectedChar.name}。\n【最優先：敵キャラ対策の抽出】\nこの動画から、対敵キャラにおける立ち回り対策を抽出してください。\n\n・立ち回りの重要ポイント（要約）\n・主要な技への対処法や反撃ポイント\n\nこれらをアプリの「対策」欄に貼れるよう、簡潔な箇条書きでまとめてください。\n※前置き不要、内容のみ出力してください。`;
+        break;
+      case 'myCombo':
+        promptText = `${base}\n【最優先：実戦コンボの抽出】\nこの動画から実戦で使えるコンボを抽出してください。\n\n・形式：[始動技] ➔ [レシピ]\n・レシピ内は「 > 」で繋ぎ、DR, PC, OD, SA1~3などの略称を使用してください。\n\nそのままアプリに貼れるよう、余計な解説を省いて出力してください。`;
+        break;
+      case 'setplay':
+        promptText = `${base}\n【最優先：セットプレイ・連携の抽出】\nこの動画から強力な起き攻めや連携を抽出してください。\n\n・形式：[締めパーツ] 有利F：[数字]F ➔ [連携内容]\n\n簡潔に内容のみ出力してください。`;
+        break;
+      case 'badHabits':
+        promptText = `あなたはSF6の高度なコーチです。初心者〜中級者がやりがちな「負け筋」を分析します。\n【最優先：NG行動と改善策の抽出】\nこの動画（または一般的な${myChar.name}の負けパターン）から、改善すべき行動を抽出してください。\n\n・NG行動: [やってはいけない事]\n・改善法: [どうすべきか]\n\n各項目1行で、箇条書きで出力してください。`;
+        break;
+      case 'training':
+        promptText = `${base}\n【最優先：トレーニング・練習メニューの抽出】\nこの動画から、自身の練度を高めるためのトレモ練習項目を抽出してください。\n\n・基礎練習項目：[具体的内容]\n・状況設定トレーニング：[相手の行動設定とそれへの対応]\n\nそのまま練習メモとして活用できるよう、簡潔に出力してください。`;
+        break;
+      default:
+        promptText = `${base}動画の内容を要約してください。`;
+    }
+    navigator.clipboard.writeText(promptText).then(() => alert("タブ専用プロンプトをコピーしました！"));
   };
 
   const getYTLink = () => {
@@ -284,6 +304,8 @@ export default function App() {
             ) : <div style={{fontSize:'10px', color:'#555', marginBottom:'15px'}}>リプレイタブでチェックした項目が表示されます</div>}
             <div style={sectionTitle}>⚔️ コンボ成功率課題</div>
             {trainingList.map((item, idx) => (<div key={idx} style={trainingCard}><div style={{color:'#fff', fontSize:'12px'}}>{item.start} ➔ {item.content}</div><div style={{color:'#f44', fontSize:'10px'}}>成功率: {item.successRate}%</div></div>))}
+            <div style={sectionTitle}>✍️ トレモ練習メモ</div>
+            <textarea style={mainTextAreaStyle} value={currentCharData.trainingNote || ''} onChange={e => updateChar('trainingNote', e.target.value)} placeholder="練習メニューや気づきを自由に記載..." />
           </div>
         ) : activeTab === 'battle' ? (
           <div style={{display:'flex', flexDirection:'column', gap:'10px'}}>
@@ -354,7 +376,7 @@ export default function App() {
   );
 }
 
-// スタイル定数は一切変更・簡略化せず維持
+// スタイル定数 (維持)
 const readingTableStyle = { width:'100%', borderCollapse:'collapse', fontSize:'10px', textAlign:'center', color:'#fff' };
 const thStyle = { border:'1px solid #333', padding:'4px', background:'#222', color:'#fc0' };
 const tdStyle = { border:'1px solid #333', padding:'4px', background:'#000', fontWeight:'bold' };
@@ -384,7 +406,7 @@ const comboInput = { width:'100%', background:'#000', color:'#fff', border:'1px 
 const comboArea = { width:'100%', background:'#000', color:'#ccc', border:'1px solid #333', padding:'5px', height:'45px', fontSize:'11px' };
 const miniLabel = { fontSize:'8px', color:'#888', display:'block' };
 const miniBtnStyle = { border:'none', color:'#fff', fontSize:'8px', padding:'2px 6px', borderRadius:'3px' };
-const mainTextAreaStyle = { width:'100%', height:'250px', background:'#000', color:'#eee', padding:'10px', border:'1px solid #333' };
+const mainTextAreaStyle = { width:'100%', height:'150px', background:'#000', color:'#eee', padding:'10px', border:'1px solid #333' };
 const aiOverlay = { position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center', color:'#0ff' };
 const adviceStyle = { position:'fixed', bottom:'20px', left:'10px', right:'10px', background:'#022', border:'1px solid #0ff', padding:'12px', borderRadius:'8px', color:'#fff', fontSize:'11px', zIndex:1000 };
 const circleBtn = { background:'transparent', border:'1px solid #0ff', color:'#0ff', borderRadius:'50%', width:'24px', height:'24px', display:'flex', alignItems:'center', justifyContent:'center' };
@@ -393,7 +415,7 @@ const toggleBtn = { border:'none', fontSize:'9px', padding:'2px 6px' };
 const battleSection = { background:'#111', borderRadius:'8px', padding:'10px', border:'1px solid #222', marginBottom:'10px' };
 const battleHeader = { fontSize:'11px', fontWeight:'bold', color:'#0ff', marginBottom:'8px', borderBottom:'1px solid #333' };
 const battleItem = { fontSize:'12px', marginBottom:'6px' };
-const sectionTitle = { fontSize:'11px', color:'#fc0', marginBottom:'8px' };
+const sectionTitle = { fontSize:'11px', color:'#fc0', marginBottom:'8px', marginTop:'5px' };
 const trainingCard = { background:'#1a1a1a', padding:'8px', borderRadius:'6px', marginBottom:'8px', borderLeft:'3px solid #f44' };
 const aiPanel = { background:'#111', padding:'10px', borderRadius:'8px', marginBottom:'10px' };
 const aiExecBtn = { width:'100%', background:'#333', border:'1px solid #555', color:'#fff', padding:'8px', borderRadius:'4px', fontSize:'11px' };
