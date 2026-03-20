@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LineChart, Line, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const CHARACTERS = [
@@ -44,18 +44,18 @@ const TABS = [
 ];
 
 const CHECKLIST_ITEMS = [
-  { id: 'okizeme_miss', label: '起き攻めミス(2回以上)', category: '起き攻め' },
-  { id: 'combo_miss', label: 'コンボミス・リーサル逃し', category: 'コンボ' },
-  { id: 'birdcage_fail', label: 'トリカゴ・端逃がし', category: 'トリカゴ' },
-  { id: 'anti_air_fail', label: '対空ミス', category: '対空' },
-  { id: 'gauge_burnout', label: '不用意なバーンアウト', category: 'ゲージ管理' },
-  { id: 'defense_bias', label: '守りの偏り・暴れすぎ', category: '守り' },
+  { id: 'anti_air', label: '対空', category: '対空' },
+  { id: 'combo', label: 'コンボ精度', category: 'コンボ' },
+  { id: 'okizeme', label: '起き攻め', category: '起き攻め' },
+  { id: 'birdcage', label: 'トリカゴ', category: '立ち回り' },
+  { id: 'burnout', label: 'バーンアウト回避', category: 'ゲージ' },
+  { id: 'defense', label: '守り・暴れ', category: '防御' },
 ];
 
-const STORAGE_KEY = 'sf6_master_data_v15';
+const STORAGE_KEY = 'sf6_master_data_v16';
 const API_KEY = process.env.REACT_APP_GEMINI_API_KEY || "YOUR_KEY_HERE";
 const genAI = new GoogleGenerativeAI(API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
 export default function App() {
   const [selectedChar, setSelectedChar] = useState(CHARACTERS[0]);
@@ -69,6 +69,10 @@ export default function App() {
   const [isAiProcessing, setIsAiProcessing] = useState(false);
   const [aiAdvice, setAiAdvice] = useState("");
   const [showReadingTable, setShowReadingTable] = useState(false);
+
+  // リプレイカウンター用ステート
+  const [replayCounts, setReplayCounts] = useState({});
+  const [battleResult, setBattleResult] = useState('Win');
 
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -169,6 +173,28 @@ export default function App() {
     finally { setIsAiProcessing(false); }
   };
 
+  // --- AI解析機能：デイリーメニュー & 負け筋特定 ---
+  const analyzeBattleTrends = async () => {
+    setIsAiProcessing(true);
+    const logs = data.battleLogs || [];
+    const recentLogs = logs.slice(0, 10);
+    const prompt = `
+      SF6の戦績データに基づき分析せよ。
+      自キャラ: ${myChar.name}
+      最近のログ: ${JSON.stringify(recentLogs)}
+      コンボ成功率課題: ${JSON.stringify(data.charCombos?.[myChar.id]?.filter(c => (parseInt(c.successRate)||0) < 80))}
+      
+      1.【今日のトレモメニュー】(10分でできる具体的メニュー)
+      2.【負け筋特定】(最近の敗北に共通する技術的欠陥)
+      を、プレイヤーのやる気が出るような口調で短くまとめて。
+    `;
+    try {
+      const result = await model.generateContent(prompt);
+      setAiAdvice(result.response.text());
+    } catch (e) { setAiAdvice("ログが不足しています。数試合リプレイをつけてください。"); }
+    finally { setIsAiProcessing(false); }
+  };
+
   const copyPrompt = () => {
     let promptText = "";
     const base = `あなたはSF6の高度なコーチです。自キャラ:${myChar.name}(${controlType === 'C' ? 'クラシック' : 'モダン'})。`;
@@ -208,20 +234,31 @@ export default function App() {
   const comboList = data.charCombos?.[myChar.id] || [{start:'', content:'', hitType:'通常', location:'中央', successRate:100}];
   const setplayList = data.charSetplays?.[myChar.id] || [{finisher:'', location:'中央', plusF:'', setup:''}];
   const habitsList = data.badHabits || [{ng:'', solution:''}];
-  const checklist = data.checklist || {};
+  
+  // リプレイカウンター操作
+  const handleCounter = (id, type) => {
+    const current = replayCounts[id] || { success: 0, fail: 0 };
+    setReplayCounts({ ...replayCounts, [id]: { ...current, [type]: current[type] + 1 } });
+  };
 
-  const checkedTrainingItems = CHECKLIST_ITEMS.filter(item => checklist[item.id]);
-  const trainingList = comboList.filter(c => c.content && (parseInt(c.successRate) || 0) < 80);
-
-  const toggleCheck = (id) => {
-    const newChecklist = { ...checklist, [id]: !checklist[id] };
-    updateMyData('checklist', newChecklist);
+  const saveBattleLog = () => {
+    const log = {
+      id: Date.now(),
+      date: new Date().toLocaleDateString(),
+      opponent: selectedChar.name,
+      result: battleResult,
+      counts: replayCounts
+    };
+    const newLogs = [log, ...(data.battleLogs || [])].slice(0, 50);
+    saveToStorage({ ...data, battleLogs: newLogs });
+    setReplayCounts({});
+    alert("対戦ログを保存しました。");
   };
 
   return (
     <div style={containerStyle}>
       {isAiProcessing && <div style={aiOverlay}>AI解析中...</div>}
-      {aiAdvice && <div style={adviceStyle} onClick={() => setAiAdvice("")}>💡 {aiAdvice}</div>}
+      {aiAdvice && <div style={adviceStyle} onClick={() => setAiAdvice("")}>💡 分析結果（クリックで閉じる）<div style={{marginTop:'5px', fontSize:'10px', whiteSpace:'pre-wrap'}}>{aiAdvice}</div></div>}
       
       <header style={headerStyle}>
         <div style={{display:'flex', gap:'5px', alignItems:'center'}}>
@@ -239,7 +276,7 @@ export default function App() {
           <div style={statVal}>{data.globalStats?.matches || 0}戦 / {data.globalStats?.rate || 0}%</div>
         </div>
         <div style={{display:'flex', gap:'4px'}}>
-          <button onClick={generateAdvice} style={circleBtn}>🎯</button>
+          <button onClick={analyzeBattleTrends} style={circleBtn} title="AI傾向分析">📊</button>
           <button onClick={() => navigator.clipboard.writeText(JSON.stringify(data)).then(() => alert("コピー"))} style={backupBtnStyle}>💾</button>
           <button onClick={() => { const i = prompt("復元"); if(i){ try{ JSON.parse(i); localStorage.setItem(STORAGE_KEY, i); window.location.reload(); }catch(e){alert("失敗")}} }} style={restoreBtnStyle}>📥</button>
         </div>
@@ -281,29 +318,47 @@ export default function App() {
 
         {activeTab === 'replay' ? (
           <div>
-            <div style={sectionTitle}>📹 リプレイ確認ポイント</div>
+            <div style={sectionTitle}>📹 リプレイ・リアルタイムカウンター</div>
             <div style={comboCardStyle}>
-              {CHECKLIST_ITEMS.map(item => (
-                <div key={item.id} style={{display:'flex', alignItems:'center', gap:'10px', padding:'8px 0', borderBottom:'1px solid #222'}}>
-                  <input type="checkbox" checked={!!checklist[item.id]} onChange={() => toggleCheck(item.id)} style={{width:'18px', height:'18px'}} />
-                  <div style={{flex:1}}><div style={{fontSize:'12px', color:'#fff'}}>{item.label}</div><div style={{fontSize:'10px', color:'#888'}}>{item.category}</div></div>
-                </div>
-              ))}
+              <div style={{display:'flex', gap:'10px', marginBottom:'15px', justifyContent:'center'}}>
+                {['Win', 'Lose'].map(r => (
+                  <button key={r} onClick={() => setBattleResult(r)} style={{...miniBtnStyle, padding:'8px 20px', fontSize:'12px', background: battleResult === r ? (r === 'Win' ? '#0f0' : '#f00') : '#333', color: '#fff'}}>{r}</button>
+                ))}
+              </div>
+              {CHECKLIST_ITEMS.map(item => {
+                const count = replayCounts[item.id] || { success: 0, fail: 0 };
+                const rate = count.success + count.fail > 0 ? Math.round((count.success / (count.success + count.fail)) * 100) : 0;
+                return (
+                  <div key={item.id} style={{display:'flex', alignItems:'center', gap:'10px', padding:'10px 0', borderBottom:'1px solid #222'}}>
+                    <div style={{flex:1}}><div style={{fontSize:'12px', color:'#fff'}}>{item.label}</div><div style={{fontSize:'10px', color: rate < 50 ? '#f44' : '#0f0'}}>成功率: {rate}%</div></div>
+                    <div style={{display:'flex', gap:'5px'}}>
+                      <button onClick={() => handleCounter(item.id, 'success')} style={{...counterBtn, color:'#0f0'}}>成功(+)</button>
+                      <button onClick={() => handleCounter(item.id, 'fail')} style={{...counterBtn, color:'#f44'}}>失敗(-)</button>
+                    </div>
+                  </div>
+                );
+              })}
+              <button onClick={saveBattleLog} style={{width:'100%', marginTop:'15px', background:'#0ff', color:'#000', border:'none', padding:'10px', borderRadius:'4px', fontWeight:'bold'}}>試合終了・ログを保存</button>
             </div>
+            <div style={sectionTitle}>📜 直近のログ</div>
+            {(data.battleLogs || []).slice(0, 5).map(log => (
+               <div key={log.id} style={{fontSize:'10px', background:'#111', padding:'5px', marginBottom:'4px', borderRadius:'4px', borderLeft: `3px solid ${log.result === 'Win' ? '#0f0' : '#f00'}`}}>
+                 {log.date} vs {log.opponent} ({log.result})
+               </div>
+            ))}
             <textarea style={mainTextAreaStyle} placeholder="リプレイを見て気づいたこと..." value={currentCharData.replayNote || ''} onChange={e => updateChar('replayNote', e.target.value)} />
           </div>
         ) : activeTab === 'training' ? (
           <div>
-            <div style={sectionTitle}>🛠️ 最優先トレモ課題 (リプレイより)</div>
-            {checkedTrainingItems.length > 0 ? (
-              <div style={{marginBottom:'15px'}}>
-                {checkedTrainingItems.map(item => (
-                  <div key={item.id} style={{...trainingCard, borderLeft:'3px solid #0ff'}}><div style={{color:'#fff', fontSize:'12px'}}>【{item.category}】{item.label}</div></div>
-                ))}
+            <div style={sectionTitle}>🛠️ トレモ課題 (AI分析優先)</div>
+            <div style={{marginBottom:'15px'}}>
+              <div style={trainingCard}>
+                <div style={{color:'#0ff', fontSize:'11px', marginBottom:'5px'}}>AIおすすめメニュー</div>
+                <div style={{color:'#eee', fontSize:'11px', whiteSpace:'pre-wrap'}}>{aiAdvice || "解析ボタン(📊)を押してください"}</div>
               </div>
-            ) : <div style={{fontSize:'10px', color:'#555', marginBottom:'15px'}}>リプレイタブでチェックした項目が表示されます</div>}
+            </div>
             <div style={sectionTitle}>⚔️ コンボ成功率課題</div>
-            {trainingList.map((item, idx) => (<div key={idx} style={trainingCard}><div style={{color:'#fff', fontSize:'12px'}}>{item.start} ➔ {item.content}</div><div style={{color:'#f44', fontSize:'10px'}}>成功率: {item.successRate}%</div></div>))}
+            {comboList.filter(c => c.content && (parseInt(c.successRate) || 0) < 80).map((item, idx) => (<div key={idx} style={trainingCard}><div style={{color:'#fff', fontSize:'12px'}}>{item.start} ➔ {item.content}</div><div style={{color:'#f44', fontSize:'10px'}}>成功率: {item.successRate}%</div></div>))}
             <div style={sectionTitle}>✍️ トレモ練習メモ</div>
             <textarea style={mainTextAreaStyle} value={currentCharData.trainingNote || ''} onChange={e => updateChar('trainingNote', e.target.value)} placeholder="練習メニューや気づきを自由に記載..." />
           </div>
@@ -375,6 +430,9 @@ export default function App() {
     </div>
   );
 }
+
+// スタイル定数 (追加分)
+const counterBtn = { background:'#222', border:'1px solid #444', borderRadius:'4px', padding:'5px 10px', fontSize:'11px', cursor:'pointer' };
 
 // スタイル定数 (維持)
 const readingTableStyle = { width:'100%', borderCollapse:'collapse', fontSize:'10px', textAlign:'center', color:'#fff' };
