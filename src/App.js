@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts';
+// 使用していない XAxis, YAxis, Tooltip を削除
+import { LineChart, Line, ResponsiveContainer } from 'recharts';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const CHARACTERS = [
@@ -276,6 +277,7 @@ export default function App() {
           <div style={statVal}>{data.globalStats?.matches || 0}戦 / {data.globalStats?.rate || 0}%</div>
         </div>
         <div style={{display:'flex', gap:'4px'}}>
+          <button onClick={generateAdvice} style={circleBtn} title="アドバイス">🎯</button>
           <button onClick={analyzeBattleTrends} style={circleBtn} title="AI傾向分析">📊</button>
           <button onClick={() => navigator.clipboard.writeText(JSON.stringify(data)).then(() => alert("コピー"))} style={backupBtnStyle}>💾</button>
           <button onClick={() => { const i = prompt("復元"); if(i){ try{ JSON.parse(i); localStorage.setItem(STORAGE_KEY, i); window.location.reload(); }catch(e){alert("失敗")}} }} style={restoreBtnStyle}>📥</button>
@@ -477,3 +479,4 @@ const sectionTitle = { fontSize:'11px', color:'#fc0', marginBottom:'8px', margin
 const trainingCard = { background:'#1a1a1a', padding:'8px', borderRadius:'6px', marginBottom:'8px', borderLeft:'3px solid #f44' };
 const aiPanel = { background:'#111', padding:'10px', borderRadius:'8px', marginBottom:'10px' };
 const aiExecBtn = { width:'100%', background:'#333', border:'1px solid #555', color:'#fff', padding:'8px', borderRadius:'4px', fontSize:'11px' };
+
