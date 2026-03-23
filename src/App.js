@@ -161,7 +161,7 @@ export default function App() {
     finally { setIsAiProcessing(false); }
   };
 
-  const generateAdvice = async () => {
+  const generateAdvice = useCallback(async () => {
     setIsAiProcessing(true);
     const context = `自キャラ: ${myChar.name}, 相手: ${selectedChar.name}, メモ: ${data[selectedChar.id]?.strategy || 'なし'}`;
     try {
@@ -169,9 +169,9 @@ export default function App() {
       setAiAdvice(result.response.text());
     } catch (e) { setAiAdvice("データを蓄積しましょう。"); }
     finally { setIsAiProcessing(false); }
-  };
+  }, [myChar, selectedChar, data]);
 
-  const analyzeBattleTrends = async () => {
+  const analyzeBattleTrends = useCallback(async () => {
     setIsAiProcessing(true);
     const logs = data.battleLogs || [];
     const recentLogs = logs.slice(0, 10);
@@ -190,39 +190,31 @@ export default function App() {
       setAiAdvice(result.response.text());
     } catch (e) { setAiAdvice("ログが不足しています。数試合リプレイをつけてください。"); }
     finally { setIsAiProcessing(false); }
-  };
+  }, [myChar, data]);
 
-  // --- 追加機能：対策テキストのクリーンアップ ---
   const cleanupStrategy = () => {
     const raw = data[selectedChar.id]?.strategy || "";
     if (!raw) return;
-    // 記号削除: [1] [2] などのリンク文字列、不要なアスタリスク等
     let cleaned = raw.replace(/\[\d+\]/g, "")
                      .replace(/[*#]/g, "")
                      .split('\n')
                      .map(line => line.trim())
                      .filter(line => line.length > 0);
-    
-    // 重複行の削除（集合化）
     const uniqueLines = [...new Set(cleaned)];
     updateChar('strategy', uniqueLines.join('\n'));
     alert("テキストを整理しました。");
   };
 
-  // --- Stream Deck対応：キーボードショートカット ---
   useEffect(() => {
     const handleKeyDown = (e) => {
-      // タブ切り替え Alt + 1-7
       if (e.altKey && e.key >= '1' && e.key <= '7') {
         const targetTab = TABS[parseInt(e.key) - 1];
         if (targetTab) setActiveTab(targetTab.id);
       }
-      // AI分析 Alt + A, 保存 Alt + S, アドバイス Alt + Q
       if (e.altKey && e.code === 'KeyA') analyzeBattleTrends();
       if (e.altKey && e.code === 'KeyS') { e.preventDefault(); alert("オートセーブ有効中"); }
       if (e.altKey && e.code === 'KeyQ') generateAdvice();
 
-      // キャラ順送り Alt + Left/Right
       if (e.altKey && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
         const currentIndex = CHARACTERS.findIndex(c => c.id === selectedChar.id);
         const nextIndex = e.key === 'ArrowRight' 
@@ -231,8 +223,6 @@ export default function App() {
         setSelectedChar(CHARACTERS[nextIndex]);
       }
 
-      // 各キャラ個別ショートカット Ctrl + Alt + [IDの1文字目]
-      // Stream Deckでは「Ctrl+Alt+R」などを一つのキーに割り当て可能
       if (e.ctrlKey && e.altKey) {
         const key = e.key.toLowerCase();
         const found = CHARACTERS.find(c => c.id.startsWith(key) || c.id === key);
@@ -241,7 +231,7 @@ export default function App() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedChar, activeTab, analyzeBattleTrends, generateAdvice]); // 依存配列に必要関数を追加
+  }, [selectedChar, activeTab, analyzeBattleTrends, generateAdvice]);
 
   const copyPrompt = () => {
     let promptText = "";
@@ -527,3 +517,4 @@ const sectionTitle = { fontSize:'11px', color:'#fc0', marginBottom:'8px', margin
 const trainingCard = { background:'#1a1a1a', padding:'8px', borderRadius:'6px', marginBottom:'8px', borderLeft:'3px solid #f44' };
 const aiPanel = { background:'#111', padding:'10px', borderRadius:'8px', marginBottom:'10px' };
 const aiExecBtn = { width:'100%', background:'#333', border:'1px solid #555', color:'#fff', padding:'8px', borderRadius:'4px', fontSize:'11px' };
+
