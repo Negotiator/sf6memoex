@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from 'react';
-// 使用していない XAxis, YAxis, Tooltip を削除
+import React, { useState, useEffect, useCallback } from 'react';
 import { LineChart, Line, ResponsiveContainer } from 'recharts';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
@@ -70,8 +69,6 @@ export default function App() {
   const [isAiProcessing, setIsAiProcessing] = useState(false);
   const [aiAdvice, setAiAdvice] = useState("");
   const [showReadingTable, setShowReadingTable] = useState(false);
-
-  // リプレイカウンター用ステート
   const [replayCounts, setReplayCounts] = useState({});
   const [battleResult, setBattleResult] = useState('Win');
 
@@ -95,10 +92,10 @@ export default function App() {
   };
 
   const updateMyData = (field, value) => saveToStorage({ ...data, [field]: value });
-  const updateChar = (field, value) => {
+  const updateChar = useCallback((field, value) => {
     const charData = data[selectedChar.id] || {};
     saveToStorage({ ...data, [selectedChar.id]: { ...charData, [field]: value } });
-  };
+  }, [data, selectedChar]);
 
   const updateList = (listKey, charId, index, field, value, defaultItem) => {
     const allLists = { ...(data[listKey] || {}) };
@@ -174,7 +171,6 @@ export default function App() {
     finally { setIsAiProcessing(false); }
   };
 
-  // --- AI解析機能：デイリーメニュー & 負け筋特定 ---
   const analyzeBattleTrends = async () => {
     setIsAiProcessing(true);
     const logs = data.battleLogs || [];
@@ -195,6 +191,57 @@ export default function App() {
     } catch (e) { setAiAdvice("ログが不足しています。数試合リプレイをつけてください。"); }
     finally { setIsAiProcessing(false); }
   };
+
+  // --- 追加機能：対策テキストのクリーンアップ ---
+  const cleanupStrategy = () => {
+    const raw = data[selectedChar.id]?.strategy || "";
+    if (!raw) return;
+    // 記号削除: [1] [2] などのリンク文字列、不要なアスタリスク等
+    let cleaned = raw.replace(/\[\d+\]/g, "")
+                     .replace(/[*#]/g, "")
+                     .split('\n')
+                     .map(line => line.trim())
+                     .filter(line => line.length > 0);
+    
+    // 重複行の削除（集合化）
+    const uniqueLines = [...new Set(cleaned)];
+    updateChar('strategy', uniqueLines.join('\n'));
+    alert("テキストを整理しました。");
+  };
+
+  // --- Stream Deck対応：キーボードショートカット ---
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // タブ切り替え Alt + 1-7
+      if (e.altKey && e.key >= '1' && e.key <= '7') {
+        const targetTab = TABS[parseInt(e.key) - 1];
+        if (targetTab) setActiveTab(targetTab.id);
+      }
+      // AI分析 Alt + A, 保存 Alt + S, アドバイス Alt + Q
+      if (e.altKey && e.code === 'KeyA') analyzeBattleTrends();
+      if (e.altKey && e.code === 'KeyS') { e.preventDefault(); alert("オートセーブ有効中"); }
+      if (e.altKey && e.code === 'KeyQ') generateAdvice();
+
+      // キャラ順送り Alt + Left/Right
+      if (e.altKey && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
+        const currentIndex = CHARACTERS.findIndex(c => c.id === selectedChar.id);
+        const nextIndex = e.key === 'ArrowRight' 
+          ? (currentIndex + 1) % CHARACTERS.length 
+          : (currentIndex - 1 + CHARACTERS.length) % CHARACTERS.length;
+        setSelectedChar(CHARACTERS[nextIndex]);
+      }
+
+      // 各キャラ個別ショートカット Ctrl + Alt + [IDの1文字目]
+      // Stream Deckでは「Ctrl+Alt+R」などを一つのキーに割り当て可能
+      if (e.ctrlKey && e.altKey) {
+        const key = e.key.toLowerCase();
+        const found = CHARACTERS.find(c => c.id.startsWith(key) || c.id === key);
+        if (found) setSelectedChar(found);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedChar, activeTab, analyzeBattleTrends, generateAdvice]); // 依存配列に必要関数を追加
 
   const copyPrompt = () => {
     let promptText = "";
@@ -236,7 +283,6 @@ export default function App() {
   const setplayList = data.charSetplays?.[myChar.id] || [{finisher:'', location:'中央', plusF:'', setup:''}];
   const habitsList = data.badHabits || [{ng:'', solution:''}];
   
-  // リプレイカウンター操作
   const handleCounter = (id, type) => {
     const current = replayCounts[id] || { success: 0, fail: 0 };
     setReplayCounts({ ...replayCounts, [id]: { ...current, [type]: current[type] + 1 } });
@@ -286,7 +332,7 @@ export default function App() {
 
       <div style={charNavStyle}>
         {CHARACTERS.map(c => (
-          <div key={c.id} onClick={() => setSelectedChar(c)} style={{...charItemStyle, opacity: selectedChar.id === c.id ? 1 : 0.4}}>
+          <div key={c.id} id={`char-${c.id}`} onClick={() => setSelectedChar(c)} style={{...charItemStyle, opacity: selectedChar.id === c.id ? 1 : 0.4}}>
             <div style={{...iconBox, border: selectedChar.id === c.id ? '2px solid #0ff' : '1px solid #444', background: c.id === 'all' ? '#000' : '#111'}}>
               {c.id === 'all' ? <div style={{color: '#f80', fontWeight: 'bold', fontSize: '12px'}}>ALL</div> : <img src={`/${c.id}.png`} alt="" style={{width:'100%', height:'100%', objectFit:'cover'}} onError={(e) => { e.target.style.display='none'; e.target.parentElement.innerHTML=c.name[0] }} />}
             </div>
@@ -426,17 +472,19 @@ export default function App() {
             </div>
           ))}</div>
         ) : (
-          <textarea style={mainTextAreaStyle} value={currentCharData.strategy || ''} onFocus={() => setFocusField({type:'main', field:'strategy'})} onChange={e => updateChar('strategy', e.target.value)} placeholder={`${selectedChar.name}対策...`} />
+          <div style={{position:'relative'}}>
+            <button onClick={cleanupStrategy} style={cleanBtnStyle} title="重複・不要記号を削除">🧹</button>
+            <textarea style={mainTextAreaStyle} value={currentCharData.strategy || ''} onFocus={() => setFocusField({type:'main', field:'strategy'})} onChange={e => updateChar('strategy', e.target.value)} placeholder={`${selectedChar.name}対策...`} />
+          </div>
         )}
       </main>
     </div>
   );
 }
 
-// スタイル定数 (追加分)
+// スタイル定数
+const cleanBtnStyle = { position:'absolute', top:'10px', right:'10px', zIndex:10, background:'#222', border:'1px solid #444', color:'#0ff', padding:'5px', borderRadius:'4px', cursor:'pointer' };
 const counterBtn = { background:'#222', border:'1px solid #444', borderRadius:'4px', padding:'5px 10px', fontSize:'11px', cursor:'pointer' };
-
-// スタイル定数 (維持)
 const readingTableStyle = { width:'100%', borderCollapse:'collapse', fontSize:'10px', textAlign:'center', color:'#fff' };
 const thStyle = { border:'1px solid #333', padding:'4px', background:'#222', color:'#fc0' };
 const tdStyle = { border:'1px solid #333', padding:'4px', background:'#000', fontWeight:'bold' };
@@ -449,7 +497,7 @@ const statVal = { fontSize:'11px', fontWeight:'bold', color:'#0f0' };
 const backupBtnStyle = { background:'#222', color:'#0ff', border:'1px solid #0ff', borderRadius:'4px', padding:'4px' };
 const restoreBtnStyle = { background:'#222', color:'#fc0', border:'1px solid #fc0', borderRadius:'4px', padding:'4px' };
 const charNavStyle = { display:'flex', overflowX:'auto', padding:'10px', gap:'12px', background:'#000', borderBottom:'1px solid #222' };
-const charItemStyle = { display:'flex', flexDirection:'column', alignItems:'center', minWidth:'45px' };
+const charItemStyle = { display:'flex', flexDirection:'column', alignItems:'center', minWidth:'45px', cursor:'pointer' };
 const iconBox = { width:'38px', height:'38px', borderRadius:'4px', overflow:'hidden', border:'1px solid #444', display:'flex', alignItems:'center', justifyContent:'center' };
 const winRowStyle = { display:'flex', gap:'10px', background:'#111', padding:'8px', borderRadius:'8px', marginBottom:'10px', alignItems:'center' };
 const winInput = { width:'40px', background:'#000', color:'#0f0', border:'1px solid #444', padding:'4px', fontSize:'12px' };
@@ -479,4 +527,3 @@ const sectionTitle = { fontSize:'11px', color:'#fc0', marginBottom:'8px', margin
 const trainingCard = { background:'#1a1a1a', padding:'8px', borderRadius:'6px', marginBottom:'8px', borderLeft:'3px solid #f44' };
 const aiPanel = { background:'#111', padding:'10px', borderRadius:'8px', marginBottom:'10px' };
 const aiExecBtn = { width:'100%', background:'#333', border:'1px solid #555', color:'#fff', padding:'8px', borderRadius:'4px', fontSize:'11px' };
-
