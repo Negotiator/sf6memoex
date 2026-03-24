@@ -71,6 +71,7 @@ export default function App() {
   const [showReadingTable, setShowReadingTable] = useState(false);
   const [replayCounts, setReplayCounts] = useState({});
   const [battleResult, setBattleResult] = useState('Win');
+  const [controllerMode, setControllerMode] = useState('Stick'); // 追加: コントローラー表示モード
 
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -107,7 +108,7 @@ export default function App() {
     saveToStorage({ ...data, [listKey]: { ...allLists, [charId]: myList } });
   };
 
-  const insertCmd = (cmd) => {
+  const insertCmd = useCallback((cmd) => {
     if (!focusField) return;
     const formatCmd = (current) => {
       const trimmed = current ? current.trim() : "";
@@ -122,7 +123,7 @@ export default function App() {
     } else {
       updateChar(focusField.field, formatCmd(data[selectedChar.id]?.[focusField.field] || ''));
     }
-  };
+  }, [focusField, data, selectedChar, updateChar]);
 
   const processWinRates = (resJson) => {
     const newData = { ...data };
@@ -232,6 +233,57 @@ export default function App() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedChar, activeTab, analyzeBattleTrends, generateAdvice]);
+
+  // --- 仮想コントローラー・コンポーネント ---
+  const VirtualController = () => {
+    const renderDir = (label, cmd) => <button onClick={() => insertCmd(cmd)} style={dirBtnStyle}>{label}</button>;
+    const renderAtk = (label) => <button onClick={() => insertCmd(label)} style={atkBtnStyle}>{label}</button>;
+    
+    const directions = [
+      {l:'↖',c:'7'}, {l:'↑',c:'8'}, {l:'↗',c:'9'},
+      {l:'←',c:'4'}, {l:'N',c:'5'}, {l:'→',c:'6'},
+      {l:'↙',c:'1'}, {l:'↓',c:'2'}, {l:'↘',c:'3'}
+    ];
+
+    const cAtks = ['LP', 'MP', 'HP', 'OD', 'LK', 'MK', 'HK', 'SA'];
+    const mAtks = ['L', 'M', 'H', 'OD', 'SP', 'AS', 'TC', 'SA'];
+
+    const currentAtks = controlType === 'C' ? cAtks : mAtks;
+
+    return (
+      <div style={vcWrapper}>
+        <div style={{display:'flex', gap:'5px', marginBottom:'10px'}}>
+          {['Stick', 'Leverless', 'Pad'].map(m => (
+            <button key={m} onClick={() => setControllerMode(m)} style={{...miniBtnStyle, background: controllerMode === m ? '#0ff' : '#333', color: controllerMode === m ? '#000' : '#fff'}}>{m}</button>
+          ))}
+        </div>
+        
+        <div style={{display:'flex', justifyContent:'space-around', alignItems:'center', background:'#1a1a1a', padding:'15px', borderRadius:'10px', border:'1px solid #333'}}>
+          {/* 左側: 方向入力 */}
+          {controllerMode === 'Stick' ? (
+            <div style={stickGrid}>{directions.map(d => renderDir(d.l, d.c))}</div>
+          ) : controllerMode === 'Leverless' ? (
+            <div style={leverlessBox}>
+              <div style={{display:'flex', gap:'10px', marginBottom:'10px'}}>{['4','2','6'].map(c => renderDir(directions.find(d=>d.c===c).l, c))}</div>
+              {renderDir('Jump', '8')}
+            </div>
+          ) : (
+            <div style={padBox}>
+              <div style={{gridArea:'up'}}>{renderDir('↑','8')}</div>
+              <div style={{gridArea:'left'}}>{renderDir('←','4')}</div>
+              <div style={{gridArea:'right'}}>{renderDir('→','6')}</div>
+              <div style={{gridArea:'down'}}>{renderDir('↓','2')}</div>
+            </div>
+          )}
+
+          {/* 右側: ボタン入力 */}
+          <div style={atkGrid}>
+            {currentAtks.map(atk => renderAtk(atk))}
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const copyPrompt = () => {
     let promptText = "";
@@ -422,10 +474,15 @@ export default function App() {
             <div style={battleSection}><div style={battleHeader}>🚫 NG & 改善</div>{habitsList.filter(b => b.ng).map((b, i) => (<div key={i} style={battleItem}><span style={{color:'#f44'}}>✕ {b.ng}</span> ➔ <span style={{color:'#0f0'}}>{b.solution}</span></div>))}</div>
             <div style={battleSection}><div style={battleHeader}>🧠 {selectedChar.name} 対策</div><div style={{whiteSpace:'pre-wrap', fontSize:'12px', color:'#eee'}}>{currentCharData.strategy || '未入力'}</div></div>
           </div>
-        ) : activeTab === 'myCombo' ? (
+        ) : activeTab === 'myCombo' || activeTab === 'setplay' ? (
           <div>
-            <div style={paletteStyle}>{[...COMMON_CMDS, ...(controlType === 'C' ? CLASSIC_CMDS : MODERN_CMDS), ...SYSTEM_CMDS].map(cmd => (<button key={cmd} onClick={() => insertCmd(cmd)} style={cmdBtnStyle}>{cmd}</button>))}</div>
-            {comboList.map((item, idx) => (
+            <div style={paletteStyle}>
+              {[...COMMON_CMDS, ...SYSTEM_CMDS].map(cmd => (<button key={cmd} onClick={() => insertCmd(cmd)} style={cmdBtnStyle}>{cmd}</button>))}
+            </div>
+            
+            <VirtualController />
+
+            {activeTab === 'myCombo' ? comboList.map((item, idx) => (
               <div key={idx} style={comboCardStyle}>
                 <div style={{display:'flex', justifyContent:'space-between', marginBottom:'8px'}}>
                   <div style={{display:'flex', gap:'3px'}}>{HIT_TYPES.map(ht => <button key={ht} onClick={() => updateList('charCombos', myChar.id, idx, 'hitType', ht, {})} style={{...miniBtnStyle, background: item.hitType === ht ? '#f44' : '#333'}}>{ht}</button>)}</div>
@@ -439,12 +496,7 @@ export default function App() {
                 <div style={{marginTop:'5px'}}><label style={miniLabel}>レシピ</label><textarea style={comboArea} value={item.content || ''} onFocus={() => setFocusField({type:'list', listKey:'charCombos', charId:myChar.id, index:idx, field:'content', default:item})} onChange={e => updateList('charCombos', myChar.id, idx, 'content', e.target.value)} /></div>
                 <div style={{marginTop:'5px'}}><input type="range" min="0" max="100" step="10" value={item.successRate || 100} onChange={e => updateList('charCombos', myChar.id, idx, 'successRate', e.target.value)} /><span style={{fontSize:'10px', marginLeft:'5px'}}>成功率: {item.successRate}%</span></div>
               </div>
-            ))}
-          </div>
-        ) : activeTab === 'setplay' ? (
-          <div>
-            <div style={paletteStyle}>{[...COMMON_CMDS, ...(controlType === 'C' ? CLASSIC_CMDS : MODERN_CMDS), ...SYSTEM_CMDS].map(cmd => (<button key={cmd} onClick={() => insertCmd(cmd)} style={cmdBtnStyle}>{cmd}</button>))}</div>
-            {setplayList.map((item, idx) => (
+            )) : setplayList.map((item, idx) => (
               <div key={idx} style={comboCardStyle}>
                 <div style={{display:'flex', gap:'8px', marginBottom:'8px'}}>
                    <div style={{flex:2}}><label style={miniLabel}>締め</label><input style={comboInput} value={item.finisher || ''} onFocus={() => setFocusField({type:'list', listKey:'charSetplays', charId:myChar.id, index:idx, field:'finisher', default:item})} onChange={e => updateList('charSetplays', myChar.id, idx, 'finisher', e.target.value)} /></div>
@@ -472,7 +524,16 @@ export default function App() {
   );
 }
 
-// スタイル定数
+// 追加スタイル
+const vcWrapper = { marginBottom: '15px', background: '#000', padding: '10px', borderRadius: '8px' };
+const stickGrid = { display: 'grid', gridTemplateColumns: 'repeat(3, 40px)', gap: '5px' };
+const atkGrid = { display: 'grid', gridTemplateColumns: 'repeat(4, 50px)', gap: '8px' };
+const leverlessBox = { display: 'flex', flexDirection: 'column', alignItems: 'center' };
+const padBox = { display: 'grid', gridTemplateAreas: '"empty up empty" "left empty right" "empty down empty"', gap: '5px' };
+const dirBtnStyle = { width: '40px', height: '40px', background: '#333', color: '#fff', border: 'none', borderRadius: '50%', fontSize: '14px', cursor: 'pointer' };
+const atkBtnStyle = { width: '50px', height: '50px', background: '#444', color: '#0ff', border: '1px solid #0ff', borderRadius: '50%', fontSize: '10px', fontWeight: 'bold', cursor: 'pointer' };
+
+// 既存スタイル (維持)
 const cleanBtnStyle = { position:'absolute', top:'10px', right:'10px', zIndex:10, background:'#222', border:'1px solid #444', color:'#0ff', padding:'5px', borderRadius:'4px', cursor:'pointer' };
 const counterBtn = { background:'#222', border:'1px solid #444', borderRadius:'4px', padding:'5px 10px', fontSize:'11px', cursor:'pointer' };
 const readingTableStyle = { width:'100%', borderCollapse:'collapse', fontSize:'10px', textAlign:'center', color:'#fff' };
@@ -517,4 +578,3 @@ const sectionTitle = { fontSize:'11px', color:'#fc0', marginBottom:'8px', margin
 const trainingCard = { background:'#1a1a1a', padding:'8px', borderRadius:'6px', marginBottom:'8px', borderLeft:'3px solid #f44' };
 const aiPanel = { background:'#111', padding:'10px', borderRadius:'8px', marginBottom:'10px' };
 const aiExecBtn = { width:'100%', background:'#333', border:'1px solid #555', color:'#fff', padding:'8px', borderRadius:'4px', fontSize:'11px' };
-
