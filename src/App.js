@@ -71,7 +71,7 @@ export default function App() {
   const [showReadingTable, setShowReadingTable] = useState(false);
   const [replayCounts, setReplayCounts] = useState({});
   const [battleResult, setBattleResult] = useState('Win');
-  const [controllerMode, setControllerMode] = useState('Stick'); // 追加: コントローラー表示モード
+  const [controllerMode, setControllerMode] = useState('Stick');
 
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -93,12 +93,13 @@ export default function App() {
   };
 
   const updateMyData = (field, value) => saveToStorage({ ...data, [field]: value });
+  
   const updateChar = useCallback((field, value) => {
     const charData = data[selectedChar.id] || {};
     saveToStorage({ ...data, [selectedChar.id]: { ...charData, [field]: value } });
   }, [data, selectedChar]);
 
-  const updateList = (listKey, charId, index, field, value, defaultItem) => {
+  const updateList = useCallback((listKey, charId, index, field, value, defaultItem) => {
     const allLists = { ...(data[listKey] || {}) };
     const myList = [...(allLists[charId] || [defaultItem])];
     myList[index] = { ...myList[index], [field]: value };
@@ -106,7 +107,7 @@ export default function App() {
       myList.push(defaultItem);
     }
     saveToStorage({ ...data, [listKey]: { ...allLists, [charId]: myList } });
-  };
+  }, [data]);
 
   const insertCmd = useCallback((cmd) => {
     if (!focusField) return;
@@ -123,7 +124,7 @@ export default function App() {
     } else {
       updateChar(focusField.field, formatCmd(data[selectedChar.id]?.[focusField.field] || ''));
     }
-  }, [focusField, data, selectedChar, updateChar]);
+  }, [focusField, data, selectedChar, updateChar, updateList]);
 
   const processWinRates = (resJson) => {
     const newData = { ...data };
@@ -234,7 +235,6 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedChar, activeTab, analyzeBattleTrends, generateAdvice]);
 
-  // --- 仮想コントローラー・コンポーネント ---
   const VirtualController = () => {
     const renderDir = (label, cmd) => <button onClick={() => insertCmd(cmd)} style={dirBtnStyle}>{label}</button>;
     const renderAtk = (label) => <button onClick={() => insertCmd(label)} style={atkBtnStyle}>{label}</button>;
@@ -259,7 +259,6 @@ export default function App() {
         </div>
         
         <div style={{display:'flex', justifyContent:'space-around', alignItems:'center', background:'#1a1a1a', padding:'15px', borderRadius:'10px', border:'1px solid #333'}}>
-          {/* 左側: 方向入力 */}
           {controllerMode === 'Stick' ? (
             <div style={stickGrid}>{directions.map(d => renderDir(d.l, d.c))}</div>
           ) : controllerMode === 'Leverless' ? (
@@ -275,8 +274,6 @@ export default function App() {
               <div style={{gridArea:'down'}}>{renderDir('↓','2')}</div>
             </div>
           )}
-
-          {/* 右側: ボタン入力 */}
           <div style={atkGrid}>
             {currentAtks.map(atk => renderAtk(atk))}
           </div>
@@ -477,7 +474,7 @@ export default function App() {
         ) : activeTab === 'myCombo' || activeTab === 'setplay' ? (
           <div>
             <div style={paletteStyle}>
-              {[...COMMON_CMDS, ...SYSTEM_CMDS].map(cmd => (<button key={cmd} onClick={() => insertCmd(cmd)} style={cmdBtnStyle}>{cmd}</button>))}
+              {[...COMMON_CMDS, ...SYSTEM_CMDS, ...(controlType === 'C' ? CLASSIC_CMDS : MODERN_CMDS)].map(cmd => (<button key={cmd} onClick={() => insertCmd(cmd)} style={cmdBtnStyle}>{cmd}</button>))}
             </div>
             
             <VirtualController />
@@ -524,7 +521,6 @@ export default function App() {
   );
 }
 
-// 追加スタイル
 const vcWrapper = { marginBottom: '15px', background: '#000', padding: '10px', borderRadius: '8px' };
 const stickGrid = { display: 'grid', gridTemplateColumns: 'repeat(3, 40px)', gap: '5px' };
 const atkGrid = { display: 'grid', gridTemplateColumns: 'repeat(4, 50px)', gap: '8px' };
@@ -533,7 +529,6 @@ const padBox = { display: 'grid', gridTemplateAreas: '"empty up empty" "left emp
 const dirBtnStyle = { width: '40px', height: '40px', background: '#333', color: '#fff', border: 'none', borderRadius: '50%', fontSize: '14px', cursor: 'pointer' };
 const atkBtnStyle = { width: '50px', height: '50px', background: '#444', color: '#0ff', border: '1px solid #0ff', borderRadius: '50%', fontSize: '10px', fontWeight: 'bold', cursor: 'pointer' };
 
-// 既存スタイル (維持)
 const cleanBtnStyle = { position:'absolute', top:'10px', right:'10px', zIndex:10, background:'#222', border:'1px solid #444', color:'#0ff', padding:'5px', borderRadius:'4px', cursor:'pointer' };
 const counterBtn = { background:'#222', border:'1px solid #444', borderRadius:'4px', padding:'5px 10px', fontSize:'11px', cursor:'pointer' };
 const readingTableStyle = { width:'100%', borderCollapse:'collapse', fontSize:'10px', textAlign:'center', color:'#fff' };
