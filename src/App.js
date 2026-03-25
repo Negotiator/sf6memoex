@@ -41,6 +41,7 @@ const TABS = [
   { id: 'replay', label: 'リプレイ', icon: '📹' },
   { id: 'training', label: 'トレモ', icon: '🛠️' },
   { id: 'battle', label: '実戦', icon: '⚔️' },
+  { id: 'qa', label: '質問', icon: '🤖' }, // 追加: AI質問タブ
 ];
 
 const CHECKLIST_ITEMS = [
@@ -71,6 +72,11 @@ export default function App() {
   const [showReadingTable, setShowReadingTable] = useState(false);
   const [replayCounts, setReplayCounts] = useState({});
   const [battleResult, setBattleResult] = useState('Win');
+  
+  // 追加: 連携表示・QA機能用ステート
+  const [comboSetplaysVisible, setComboSetplaysVisible] = useState({});
+  const [qaInput, setQaInput] = useState("");
+  const [qaResult, setQaResult] = useState("");
 
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -192,6 +198,19 @@ export default function App() {
     finally { setIsAiProcessing(false); }
   }, [myChar, data]);
 
+  // 追加: AIなんでも質問機能
+  const askAnyQuestion = async () => {
+    if (!qaInput.trim()) return;
+    setIsAiProcessing(true);
+    const context = `自キャラ: ${myChar.name}, 現在開いている対策対象: ${selectedChar.name}。アプリ内既存データ: ${JSON.stringify(data[selectedChar.id] || {})}`;
+    const prompt = `あなたはSF6の専門コーチです。\n現在のユーザーの状況: ${context}\n\n質問: ${qaInput}\n\nこのアプリの情報を優先しつつ、不足している場合はストリートファイター6の一般的な知識（フレームデータ、立ち回り、プロの意見など）を補って回答してください。また、参考になるようなYouTube動画の検索キーワードや、noteなどの記事URL（または検索のヒント）も併記してください。`;
+    try {
+      const result = await model.generateContent(prompt);
+      setQaResult(result.response.text());
+    } catch (e) { setQaResult("質問の処理に失敗しました。"); }
+    finally { setIsAiProcessing(false); }
+  };
+
   const cleanupStrategy = () => {
     const raw = data[selectedChar.id]?.strategy || "";
     if (!raw) return;
@@ -207,7 +226,7 @@ export default function App() {
 
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (e.altKey && e.key >= '1' && e.key <= '7') {
+      if (e.altKey && e.key >= '1' && e.key <= '8') { // 8タブに対応
         const targetTab = TABS[parseInt(e.key) - 1];
         if (targetTab) setActiveTab(targetTab.id);
       }
@@ -331,7 +350,8 @@ export default function App() {
         ))}
       </div>
 
-      <main style={{flex:1, padding:'10px', overflowY:'auto'}}>
+      {/* 追加: スクロールせずに固定表示させる上部エリア */}
+      <div style={{ padding: '10px 10px 0 10px', flexShrink: 0, background: '#050505' }}>
         <div style={aiPanel}>
            <button onClick={() => analyzeWinRateText(prompt("公式サイトの戦績を貼り付け"))} style={aiExecBtn}>📋 戦績同期</button>
         </div>
@@ -353,7 +373,9 @@ export default function App() {
         </div>
 
         <div style={tabGroupStyle}>{TABS.map(t => (<button key={t.id} onClick={() => setActiveTab(t.id)} style={{...tabBtnStyle, color: activeTab === t.id ? '#0ff' : '#666', background: activeTab === t.id ? '#222' : '#000'}}>{t.icon} {t.label}</button>))}</div>
+      </div>
 
+      <main style={{flex:1, padding:'10px', overflowY:'auto'}}>
         {activeTab === 'replay' ? (
           <div>
             <div style={sectionTitle}>📹 リプレイ・リアルタイムカウンター</div>
@@ -425,21 +447,45 @@ export default function App() {
         ) : activeTab === 'myCombo' ? (
           <div>
             <div style={paletteStyle}>{[...COMMON_CMDS, ...(controlType === 'C' ? CLASSIC_CMDS : MODERN_CMDS), ...SYSTEM_CMDS].map(cmd => (<button key={cmd} onClick={() => insertCmd(cmd)} style={cmdBtnStyle}>{cmd}</button>))}</div>
-            {comboList.map((item, idx) => (
-              <div key={idx} style={comboCardStyle}>
-                <div style={{display:'flex', justifyContent:'space-between', marginBottom:'8px'}}>
-                  <div style={{display:'flex', gap:'3px'}}>{HIT_TYPES.map(ht => <button key={ht} onClick={() => updateList('charCombos', myChar.id, idx, 'hitType', ht, {})} style={{...miniBtnStyle, background: item.hitType === ht ? '#f44' : '#333'}}>{ht}</button>)}</div>
-                  <div style={{display:'flex', gap:'3px'}}>{LOCATIONS.map(loc => <button key={loc} onClick={() => updateList('charCombos', myChar.id, idx, 'location', loc, {})} style={{...miniBtnStyle, background: item.location === loc ? '#0ff' : '#333', color: item.location === loc ? '#000' : '#fff'}}>{loc}</button>)}</div>
+            {comboList.map((item, idx) => {
+              // 追加: レシピの最後の文字で連携を自動抽出
+              const lastPart = item.content ? item.content.split('>').pop().trim() : '';
+              const matchingSetplays = lastPart ? setplayList.filter(sp => sp.finisher && (lastPart.includes(sp.finisher) || sp.finisher.includes(lastPart))) : [];
+
+              return (
+                <div key={idx} style={comboCardStyle}>
+                  <div style={{display:'flex', justifyContent:'space-between', marginBottom:'8px'}}>
+                    <div style={{display:'flex', gap:'3px'}}>{HIT_TYPES.map(ht => <button key={ht} onClick={() => updateList('charCombos', myChar.id, idx, 'hitType', ht, {})} style={{...miniBtnStyle, background: item.hitType === ht ? '#f44' : '#333'}}>{ht}</button>)}</div>
+                    <div style={{display:'flex', gap:'3px'}}>{LOCATIONS.map(loc => <button key={loc} onClick={() => updateList('charCombos', myChar.id, idx, 'location', loc, {})} style={{...miniBtnStyle, background: item.location === loc ? '#0ff' : '#333', color: item.location === loc ? '#000' : '#fff'}}>{loc}</button>)}</div>
+                  </div>
+                  <div style={inputGrid}>
+                     <div><label style={miniLabel}>始動</label><input style={comboInput} value={item.start || ''} onFocus={() => setFocusField({type:'list', listKey:'charCombos', charId:myChar.id, index:idx, field:'start', default:item})} onChange={e => updateList('charCombos', myChar.id, idx, 'start', e.target.value)} /></div>
+                     <div><label style={miniLabel}>DMG</label><input style={comboInput} type="number" value={item.dmg || ''} onChange={e => updateList('charCombos', myChar.id, idx, 'dmg', e.target.value)} /></div>
+                     <div><label style={miniLabel}>有利F</label><input style={{...comboInput, color:'#0f0'}} type="number" value={item.plusF || ''} onChange={e => updateList('charCombos', myChar.id, idx, 'plusF', e.target.value)} /></div>
+                  </div>
+                  <div style={{marginTop:'5px'}}><label style={miniLabel}>レシピ</label><textarea style={comboArea} value={item.content || ''} onFocus={() => setFocusField({type:'list', listKey:'charCombos', charId:myChar.id, index:idx, field:'content', default:item})} onChange={e => updateList('charCombos', myChar.id, idx, 'content', e.target.value)} /></div>
+                  <div style={{marginTop:'5px'}}><input type="range" min="0" max="100" step="10" value={item.successRate || 100} onChange={e => updateList('charCombos', myChar.id, idx, 'successRate', e.target.value)} /><span style={{fontSize:'10px', marginLeft:'5px'}}>成功率: {item.successRate}%</span></div>
+                  
+                  {/* 追加: マッチした連携の表示/非表示 */}
+                  {matchingSetplays.length > 0 && (
+                    <div style={{marginTop: '10px'}}>
+                      <button onClick={() => setComboSetplaysVisible(prev => ({...prev, [idx]: !prev[idx]}))} style={{...linkBtn('#fc0'), background: 'transparent', cursor: 'pointer'}}>
+                        {comboSetplaysVisible[idx] ? '連携を隠す' : `関連する連携を表示 (${matchingSetplays.length}件)`}
+                      </button>
+                      {comboSetplaysVisible[idx] && (
+                        <div style={{marginTop: '5px', padding: '8px', background: '#000', border: '1px solid #444', borderRadius: '4px'}}>
+                          {matchingSetplays.map((sp, sIdx) => (
+                            <div key={sIdx} style={{fontSize: '10px', color: '#ccc', marginBottom: '4px', borderBottom: '1px dashed #333', paddingBottom: '4px'}}>
+                              <span style={{color: '#fc0'}}>[{sp.finisher}]</span> 有利: <span style={{color: '#0f0'}}>{sp.plusF}F</span> ➔ {sp.setup}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-                <div style={inputGrid}>
-                   <div><label style={miniLabel}>始動</label><input style={comboInput} value={item.start || ''} onFocus={() => setFocusField({type:'list', listKey:'charCombos', charId:myChar.id, index:idx, field:'start', default:item})} onChange={e => updateList('charCombos', myChar.id, idx, 'start', e.target.value)} /></div>
-                   <div><label style={miniLabel}>DMG</label><input style={comboInput} type="number" value={item.dmg || ''} onChange={e => updateList('charCombos', myChar.id, idx, 'dmg', e.target.value)} /></div>
-                   <div><label style={miniLabel}>有利F</label><input style={{...comboInput, color:'#0f0'}} type="number" value={item.plusF || ''} onChange={e => updateList('charCombos', myChar.id, idx, 'plusF', e.target.value)} /></div>
-                </div>
-                <div style={{marginTop:'5px'}}><label style={miniLabel}>レシピ</label><textarea style={comboArea} value={item.content || ''} onFocus={() => setFocusField({type:'list', listKey:'charCombos', charId:myChar.id, index:idx, field:'content', default:item})} onChange={e => updateList('charCombos', myChar.id, idx, 'content', e.target.value)} /></div>
-                <div style={{marginTop:'5px'}}><input type="range" min="0" max="100" step="10" value={item.successRate || 100} onChange={e => updateList('charCombos', myChar.id, idx, 'successRate', e.target.value)} /><span style={{fontSize:'10px', marginLeft:'5px'}}>成功率: {item.successRate}%</span></div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : activeTab === 'setplay' ? (
           <div>
@@ -461,6 +507,18 @@ export default function App() {
               <div style={{marginTop:'5px'}}><label style={{...miniLabel, color:'#0f0'}}>改善策</label><input style={comboInput} value={item.solution || ''} onChange={e => { const newList = [...habitsList]; newList[idx].solution = e.target.value; updateMyData('badHabits', newList); }} /></div>
             </div>
           ))}</div>
+        ) : activeTab === 'qa' ? (
+          // 追加: AIなんでも質問タブの内容
+          <div style={{display: 'flex', flexDirection: 'column', gap: '10px', height: '100%'}}>
+            <div style={sectionTitle}>🤖 AIになんでも質問</div>
+            <div style={{display: 'flex', gap: '5px'}}>
+              <input style={{...comboInput, flex: 1}} value={qaInput} onChange={e => setQaInput(e.target.value)} placeholder="例：ルークのしゃがみ中P対策は？ / 画面端の柔道対策を教えて" />
+              <button onClick={askAnyQuestion} style={{...saveBtnStyle, padding: '10px'}}>質問送信</button>
+            </div>
+            <div style={{flex: 1, background: '#111', border: '1px solid #333', borderRadius: '8px', padding: '10px', overflowY: 'auto', whiteSpace: 'pre-wrap', fontSize: '12px', color: '#eee'}}>
+              {qaResult || "質問を入力して送信すると、アプリのデータやWeb上の知識からAIが回答します。\n(※YouTubeやnoteなどの参考リンクのヒントも提示されます)"}
+            </div>
+          </div>
         ) : (
           <div style={{position:'relative'}}>
             <button onClick={cleanupStrategy} style={cleanBtnStyle} title="重複・不要記号を削除">🧹</button>
@@ -472,7 +530,7 @@ export default function App() {
   );
 }
 
-// スタイル定数
+// スタイル定数 (変更なし)
 const cleanBtnStyle = { position:'absolute', top:'10px', right:'10px', zIndex:10, background:'#222', border:'1px solid #444', color:'#0ff', padding:'5px', borderRadius:'4px', cursor:'pointer' };
 const counterBtn = { background:'#222', border:'1px solid #444', borderRadius:'4px', padding:'5px 10px', fontSize:'11px', cursor:'pointer' };
 const readingTableStyle = { width:'100%', borderCollapse:'collapse', fontSize:'10px', textAlign:'center', color:'#fff' };
@@ -517,4 +575,3 @@ const sectionTitle = { fontSize:'11px', color:'#fc0', marginBottom:'8px', margin
 const trainingCard = { background:'#1a1a1a', padding:'8px', borderRadius:'6px', marginBottom:'8px', borderLeft:'3px solid #f44' };
 const aiPanel = { background:'#111', padding:'10px', borderRadius:'8px', marginBottom:'10px' };
 const aiExecBtn = { width:'100%', background:'#333', border:'1px solid #555', color:'#fff', padding:'8px', borderRadius:'4px', fontSize:'11px' };
-
