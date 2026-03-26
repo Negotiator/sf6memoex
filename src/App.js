@@ -41,7 +41,6 @@ const TABS = [
   { id: 'replay', label: 'リプレイ', icon: '📹' },
   { id: 'training', label: 'トレモ', icon: '🛠️' },
   { id: 'battle', label: '実戦', icon: '⚔️' },
-  { id: 'qa', label: '質問', icon: '🤖' },
 ];
 
 const CHECKLIST_ITEMS = [
@@ -72,10 +71,7 @@ export default function App() {
   const [showReadingTable, setShowReadingTable] = useState(false);
   const [replayCounts, setReplayCounts] = useState({});
   const [battleResult, setBattleResult] = useState('Win');
-  
   const [comboSetplaysVisible, setComboSetplaysVisible] = useState({});
-  const [qaInput, setQaInput] = useState("");
-  const [qaResult, setQaResult] = useState("");
 
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -197,43 +193,6 @@ export default function App() {
     finally { setIsAiProcessing(false); }
   }, [myChar, data]);
 
-  const askAnyQuestion = async () => {
-    if (!qaInput.trim()) return;
-    setIsAiProcessing(true);
-    const charDataStr = JSON.stringify(data[selectedChar.id] || {});
-    const context = `自キャラ: ${myChar.name}, 現在開いている対策対象: ${selectedChar.name}。アプリ内既存データ: ${charDataStr}`;
-    const prompt = `あなたはSF6の専門コーチです。\n現在のユーザーの状況: ${context}\n\n質問: ${qaInput}\n\nこのアプリの情報を優先しつつ、不足している場合はストリートファイター6の一般的な知識を補って回答してください。また、参考になるようなYouTube動画の検索キーワードや、noteなどの記事URLのヒントも併記してください。`;
-    
-    try {
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      
-      if (response.candidates && response.candidates.length > 0) {
-        const text = response.text();
-        if (text) {
-          setQaResult(text);
-        } else {
-          setQaResult("AIからの回答が空でした。質問内容を変えてみてください。");
-        }
-      } else {
-        setQaResult("回答を生成できませんでした。質問内容を調整して再度お試しください。");
-      }
-    } catch (e) {
-      console.error(e);
-      let errorMsg = "質問の処理に失敗しました。";
-      if (API_KEY === "YOUR_KEY_HERE") {
-        errorMsg += "\n(原因: APIキーが初期値のままです。有効なキーを設定してください)";
-      } else if (e.message?.includes("SAFETY")) {
-        errorMsg += "\n(原因: 安全性の制限によりブロックされました。内容を変えてください)";
-      } else {
-        errorMsg += "APIキーの確認か、少し時間を置いて再度お試しください。";
-      }
-      setQaResult(errorMsg);
-    } finally {
-      setIsAiProcessing(false);
-    }
-  };
-
   const cleanupStrategy = () => {
     const raw = data[selectedChar.id]?.strategy || "";
     if (!raw) return;
@@ -249,7 +208,7 @@ export default function App() {
 
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (e.altKey && e.key >= '1' && e.key <= '8') {
+      if (e.altKey && e.key >= '1' && e.key <= '7') {
         const targetTab = TABS[parseInt(e.key) - 1];
         if (targetTab) setActiveTab(targetTab.id);
       }
@@ -263,12 +222,6 @@ export default function App() {
           ? (currentIndex + 1) % CHARACTERS.length 
           : (currentIndex - 1 + CHARACTERS.length) % CHARACTERS.length;
         setSelectedChar(CHARACTERS[nextIndex]);
-      }
-
-      if (e.ctrlKey && e.altKey) {
-        const key = e.key.toLowerCase();
-        const found = CHARACTERS.find(c => c.id.startsWith(key) || c.id === key);
-        if (found) setSelectedChar(found);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -293,9 +246,6 @@ export default function App() {
         break;
       case 'training':
         promptText = `${base}\n【最優先：トレーニング・練習メニューの抽出】\nこの動画から、自身の練度を高めるためのトレモ練習項目を抽出してください。\n\n・基礎練習項目：[具体的内容]\n・状況設定トレーニング：[相手の行動設定とそれへの対応]\n\nそのまま練習メモとして活用できるよう、簡潔に出力してください。`;
-        break;
-      case 'qa':
-        promptText = `${base}現在、${selectedChar.name}対策の画面を開いています。私の質問に対して、格ゲーの専門用語を使いつつも分かりやすく回答してください。\n質問: ${qaInput || '[ここに質問を入力してください]'}`;
         break;
       default:
         promptText = `${base}動画の内容を要約してください。`;
@@ -530,17 +480,6 @@ export default function App() {
               <div style={{marginTop:'5px'}}><label style={{...miniLabel, color:'#0f0'}}>改善策</label><input style={comboInput} value={item.solution || ''} onChange={e => { const newList = [...habitsList]; newList[idx].solution = e.target.value; updateMyData('badHabits', newList); }} /></div>
             </div>
           ))}</div>
-        ) : activeTab === 'qa' ? (
-          <div style={{display: 'flex', flexDirection: 'column', gap: '10px', height: '100%'}}>
-            <div style={sectionTitle}>🤖 AIになんでも質問</div>
-            <div style={{display: 'flex', gap: '5px'}}>
-              <input style={{...comboInput, flex: 1}} value={qaInput} onChange={e => setQaInput(e.target.value)} placeholder="例：ルークのしゃがみ中P対策は？ / 画面端の柔道対策を教えて" />
-              <button onClick={askAnyQuestion} style={{...saveBtnStyle, padding: '10px'}}>質問送信</button>
-            </div>
-            <div style={{flex: 1, background: '#111', border: '1px solid #333', borderRadius: '8px', padding: '10px', overflowY: 'auto', whiteSpace: 'pre-wrap', fontSize: '12px', color: '#eee'}}>
-              {qaResult || "質問を入力して送信すると、アプリのデータやWeb上の知識からAIが回答します。"}
-            </div>
-          </div>
         ) : (
           <div style={{position:'relative'}}>
             <button onClick={cleanupStrategy} style={cleanBtnStyle} title="重複・不要記号を削除">🧹</button>
