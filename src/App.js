@@ -41,7 +41,7 @@ const TABS = [
   { id: 'replay', label: 'リプレイ', icon: '📹' },
   { id: 'training', label: 'トレモ', icon: '🛠️' },
   { id: 'battle', label: '実戦', icon: '⚔️' },
-  { id: 'qa', label: '質問', icon: '🤖' }, // 追加: AI質問タブ
+  { id: 'qa', label: '質問', icon: '🤖' },
 ];
 
 const CHECKLIST_ITEMS = [
@@ -72,8 +72,6 @@ export default function App() {
   const [showReadingTable, setShowReadingTable] = useState(false);
   const [replayCounts, setReplayCounts] = useState({});
   const [battleResult, setBattleResult] = useState('Win');
-  
-  // 追加: 連携表示・QA機能用ステート
   const [comboSetplaysVisible, setComboSetplaysVisible] = useState({});
   const [qaInput, setQaInput] = useState("");
   const [qaResult, setQaResult] = useState("");
@@ -198,17 +196,30 @@ export default function App() {
     finally { setIsAiProcessing(false); }
   }, [myChar, data]);
 
-  // 追加: AIなんでも質問機能
+  // アップグレード: エラーハンドリングを強化した質問機能
   const askAnyQuestion = async () => {
     if (!qaInput.trim()) return;
     setIsAiProcessing(true);
-    const context = `自キャラ: ${myChar.name}, 現在開いている対策対象: ${selectedChar.name}。アプリ内既存データ: ${JSON.stringify(data[selectedChar.id] || {})}`;
-    const prompt = `あなたはSF6の専門コーチです。\n現在のユーザーの状況: ${context}\n\n質問: ${qaInput}\n\nこのアプリの情報を優先しつつ、不足している場合はストリートファイター6の一般的な知識（フレームデータ、立ち回り、プロの意見など）を補って回答してください。また、参考になるようなYouTube動画の検索キーワードや、noteなどの記事URL（または検索のヒント）も併記してください。`;
+    const charDataStr = JSON.stringify(data[selectedChar.id] || {});
+    const context = `自キャラ: ${myChar.name}, 現在開いている対策対象: ${selectedChar.name}。アプリ内既存データ: ${charDataStr}`;
+    const prompt = `あなたはSF6の専門コーチです。\n現在のユーザーの状況: ${context}\n\n質問: ${qaInput}\n\nこのアプリの情報を優先しつつ、不足している場合はストリートファイター6の一般的な知識を補って回答してください。また、参考になるようなYouTube動画の検索キーワードや、noteなどの記事URLのヒントも併記してください。`;
+    
     try {
       const result = await model.generateContent(prompt);
-      setQaResult(result.response.text());
-    } catch (e) { setQaResult("質問の処理に失敗しました。"); }
-    finally { setIsAiProcessing(false); }
+      const response = await result.response;
+      const text = response.text();
+      
+      if (text) {
+        setQaResult(text);
+      } else {
+        setQaResult("AIからの回答が空でした。質問内容を変えてみてください。");
+      }
+    } catch (e) {
+      console.error(e);
+      setQaResult("質問の処理に失敗しました。APIキーの確認か、少し時間を置いて再度お試しください。");
+    } finally {
+      setIsAiProcessing(false);
+    }
   };
 
   const cleanupStrategy = () => {
@@ -226,7 +237,7 @@ export default function App() {
 
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (e.altKey && e.key >= '1' && e.key <= '8') { // 8タブに対応
+      if (e.altKey && e.key >= '1' && e.key <= '8') {
         const targetTab = TABS[parseInt(e.key) - 1];
         if (targetTab) setActiveTab(targetTab.id);
       }
@@ -252,6 +263,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedChar, activeTab, analyzeBattleTrends, generateAdvice]);
 
+  // アップグレード: QAタブ対応のプロンプト生成
   const copyPrompt = () => {
     let promptText = "";
     const base = `あなたはSF6の高度なコーチです。自キャラ:${myChar.name}(${controlType === 'C' ? 'クラシック' : 'モダン'})。`;
@@ -270,6 +282,9 @@ export default function App() {
         break;
       case 'training':
         promptText = `${base}\n【最優先：トレーニング・練習メニューの抽出】\nこの動画から、自身の練度を高めるためのトレモ練習項目を抽出してください。\n\n・基礎練習項目：[具体的内容]\n・状況設定トレーニング：[相手の行動設定とそれへの対応]\n\nそのまま練習メモとして活用できるよう、簡潔に出力してください。`;
+        break;
+      case 'qa':
+        promptText = `${base}現在、${selectedChar.name}対策の画面を開いています。私の質問に対して、格ゲーの専門用語を使いつつも分かりやすく回答してください。\n質問: ${qaInput || '[ここに質問を入力してください]'}`;
         break;
       default:
         promptText = `${base}動画の内容を要約してください。`;
@@ -350,7 +365,6 @@ export default function App() {
         ))}
       </div>
 
-      {/* 追加: スクロールせずに固定表示させる上部エリア */}
       <div style={{ padding: '10px 10px 0 10px', flexShrink: 0, background: '#050505' }}>
         <div style={aiPanel}>
            <button onClick={() => analyzeWinRateText(prompt("公式サイトの戦績を貼り付け"))} style={aiExecBtn}>📋 戦績同期</button>
@@ -448,7 +462,6 @@ export default function App() {
           <div>
             <div style={paletteStyle}>{[...COMMON_CMDS, ...(controlType === 'C' ? CLASSIC_CMDS : MODERN_CMDS), ...SYSTEM_CMDS].map(cmd => (<button key={cmd} onClick={() => insertCmd(cmd)} style={cmdBtnStyle}>{cmd}</button>))}</div>
             {comboList.map((item, idx) => {
-              // 追加: レシピの最後の文字で連携を自動抽出
               const lastPart = item.content ? item.content.split('>').pop().trim() : '';
               const matchingSetplays = lastPart ? setplayList.filter(sp => sp.finisher && (lastPart.includes(sp.finisher) || sp.finisher.includes(lastPart))) : [];
 
@@ -466,7 +479,6 @@ export default function App() {
                   <div style={{marginTop:'5px'}}><label style={miniLabel}>レシピ</label><textarea style={comboArea} value={item.content || ''} onFocus={() => setFocusField({type:'list', listKey:'charCombos', charId:myChar.id, index:idx, field:'content', default:item})} onChange={e => updateList('charCombos', myChar.id, idx, 'content', e.target.value)} /></div>
                   <div style={{marginTop:'5px'}}><input type="range" min="0" max="100" step="10" value={item.successRate || 100} onChange={e => updateList('charCombos', myChar.id, idx, 'successRate', e.target.value)} /><span style={{fontSize:'10px', marginLeft:'5px'}}>成功率: {item.successRate}%</span></div>
                   
-                  {/* 追加: マッチした連携の表示/非表示 */}
                   {matchingSetplays.length > 0 && (
                     <div style={{marginTop: '10px'}}>
                       <button onClick={() => setComboSetplaysVisible(prev => ({...prev, [idx]: !prev[idx]}))} style={{...linkBtn('#fc0'), background: 'transparent', cursor: 'pointer'}}>
@@ -508,7 +520,6 @@ export default function App() {
             </div>
           ))}</div>
         ) : activeTab === 'qa' ? (
-          // 追加: AIなんでも質問タブの内容
           <div style={{display: 'flex', flexDirection: 'column', gap: '10px', height: '100%'}}>
             <div style={sectionTitle}>🤖 AIになんでも質問</div>
             <div style={{display: 'flex', gap: '5px'}}>
@@ -530,7 +541,7 @@ export default function App() {
   );
 }
 
-// スタイル定数 (変更なし)
+// スタイル定数は変更なし
 const cleanBtnStyle = { position:'absolute', top:'10px', right:'10px', zIndex:10, background:'#222', border:'1px solid #444', color:'#0ff', padding:'5px', borderRadius:'4px', cursor:'pointer' };
 const counterBtn = { background:'#222', border:'1px solid #444', borderRadius:'4px', padding:'5px 10px', fontSize:'11px', cursor:'pointer' };
 const readingTableStyle = { width:'100%', borderCollapse:'collapse', fontSize:'10px', textAlign:'center', color:'#fff' };
