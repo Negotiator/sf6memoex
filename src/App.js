@@ -72,6 +72,7 @@ export default function App() {
   const [showReadingTable, setShowReadingTable] = useState(false);
   const [replayCounts, setReplayCounts] = useState({});
   const [battleResult, setBattleResult] = useState('Win');
+  
   const [comboSetplaysVisible, setComboSetplaysVisible] = useState({});
   const [qaInput, setQaInput] = useState("");
   const [qaResult, setQaResult] = useState("");
@@ -196,7 +197,7 @@ export default function App() {
     finally { setIsAiProcessing(false); }
   }, [myChar, data]);
 
-  // アップグレード: エラーハンドリングを強化した質問機能
+  // 修正: AIなんでも質問機能（エラー原因を特定しやすく修正）
   const askAnyQuestion = async () => {
     if (!qaInput.trim()) return;
     setIsAiProcessing(true);
@@ -207,16 +208,29 @@ export default function App() {
     try {
       const result = await model.generateContent(prompt);
       const response = await result.response;
-      const text = response.text();
       
-      if (text) {
-        setQaResult(text);
+      // セーフティフィルター等で中身が取り出せない場合のチェック
+      if (response.candidates && response.candidates.length > 0) {
+        const text = response.text();
+        if (text) {
+          setQaResult(text);
+        } else {
+          setQaResult("AIからの回答が空でした。質問内容を変えてみてください。");
+        }
       } else {
-        setQaResult("AIからの回答が空でした。質問内容を変えてみてください。");
+        setQaResult("回答を生成できませんでした。質問内容を調整して再度お試しください。");
       }
     } catch (e) {
       console.error(e);
-      setQaResult("質問の処理に失敗しました。APIキーの確認か、少し時間を置いて再度お試しください。");
+      let errorMsg = "質問の処理に失敗しました。";
+      if (API_KEY === "YOUR_KEY_HERE") {
+        errorMsg += "\n(原因: APIキーが初期値のままです。有効なキーを設定してください)";
+      } else if (e.message?.includes("SAFETY")) {
+        errorMsg += "\n(原因: 安全性の制限によりブロックされました。内容を変えてください)";
+      } else {
+        errorMsg += "APIキーの確認か、少し時間を置いて再度お試しください。";
+      }
+      setQaResult(errorMsg);
     } finally {
       setIsAiProcessing(false);
     }
@@ -263,7 +277,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedChar, activeTab, analyzeBattleTrends, generateAdvice]);
 
-  // アップグレード: QAタブ対応のプロンプト生成
+  // 修正: 質問タブ用のプロンプト生成ロジックを追加・統合
   const copyPrompt = () => {
     let promptText = "";
     const base = `あなたはSF6の高度なコーチです。自キャラ:${myChar.name}(${controlType === 'C' ? 'クラシック' : 'モダン'})。`;
@@ -460,7 +474,7 @@ export default function App() {
           </div>
         ) : activeTab === 'myCombo' ? (
           <div>
-            <div style={paletteStyle}>{[...COMMON_CMDS, ...(controlType === 'C' ? CLASSIC_CMDS : MODERN_CMDS), ...SYSTEM_CMDS].map(cmd => (<button key={cmd} onClick={() => insertCmd(cmd)} style={cmdBtnStyle}>{cmd}</button>))}</div>
+            <div style={paletteStyle}>{[...COMMON_CMDS, ...(controlType === 'C' ? CLASSIC_DS : MODERN_CMDS), ...SYSTEM_CMDS].map(cmd => (<button key={cmd} onClick={() => insertCmd(cmd)} style={cmdBtnStyle}>{cmd}</button>))}</div>
             {comboList.map((item, idx) => {
               const lastPart = item.content ? item.content.split('>').pop().trim() : '';
               const matchingSetplays = lastPart ? setplayList.filter(sp => sp.finisher && (lastPart.includes(sp.finisher) || sp.finisher.includes(lastPart))) : [];
@@ -527,7 +541,7 @@ export default function App() {
               <button onClick={askAnyQuestion} style={{...saveBtnStyle, padding: '10px'}}>質問送信</button>
             </div>
             <div style={{flex: 1, background: '#111', border: '1px solid #333', borderRadius: '8px', padding: '10px', overflowY: 'auto', whiteSpace: 'pre-wrap', fontSize: '12px', color: '#eee'}}>
-              {qaResult || "質問を入力して送信すると、アプリのデータやWeb上の知識からAIが回答します。\n(※YouTubeやnoteなどの参考リンクのヒントも提示されます)"}
+              {qaResult || "質問を入力して送信すると、アプリのデータやWeb上の知識からAIが回答します。"}
             </div>
           </div>
         ) : (
@@ -541,7 +555,6 @@ export default function App() {
   );
 }
 
-// スタイル定数は変更なし
 const cleanBtnStyle = { position:'absolute', top:'10px', right:'10px', zIndex:10, background:'#222', border:'1px solid #444', color:'#0ff', padding:'5px', borderRadius:'4px', cursor:'pointer' };
 const counterBtn = { background:'#222', border:'1px solid #444', borderRadius:'4px', padding:'5px 10px', fontSize:'11px', cursor:'pointer' };
 const readingTableStyle = { width:'100%', borderCollapse:'collapse', fontSize:'10px', textAlign:'center', color:'#fff' };
