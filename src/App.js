@@ -197,7 +197,6 @@ export default function App() {
     finally { setIsAiProcessing(false); }
   }, [myChar, data]);
 
-  // 修正: AIなんでも質問機能（エラー原因を特定しやすく修正）
   const askAnyQuestion = async () => {
     if (!qaInput.trim()) return;
     setIsAiProcessing(true);
@@ -209,7 +208,6 @@ export default function App() {
       const result = await model.generateContent(prompt);
       const response = await result.response;
       
-      // セーフティフィルター等で中身が取り出せない場合のチェック
       if (response.candidates && response.candidates.length > 0) {
         const text = response.text();
         if (text) {
@@ -277,7 +275,6 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedChar, activeTab, analyzeBattleTrends, generateAdvice]);
 
-  // 修正: 質問タブ用のプロンプト生成ロジックを追加・統合
   const copyPrompt = () => {
     let promptText = "";
     const base = `あなたはSF6の高度なコーチです。自キャラ:${myChar.name}(${controlType === 'C' ? 'クラシック' : 'モダン'})。`;
@@ -474,7 +471,7 @@ export default function App() {
           </div>
         ) : activeTab === 'myCombo' ? (
           <div>
-            <div style={paletteStyle}>{[...COMMON_CMDS, ...(controlType === 'C' ? CLASSIC_DS : MODERN_CMDS), ...SYSTEM_CMDS].map(cmd => (<button key={cmd} onClick={() => insertCmd(cmd)} style={cmdBtnStyle}>{cmd}</button>))}</div>
+            <div style={paletteStyle}>{[...COMMON_CMDS, ...(controlType === 'C' ? CLASSIC_CMDS : MODERN_CMDS), ...SYSTEM_CMDS].map(cmd => (<button key={cmd} onClick={() => insertCmd(cmd)} style={cmdBtnStyle}>{cmd}</button>))}</div>
             {comboList.map((item, idx) => {
               const lastPart = item.content ? item.content.split('>').pop().trim() : '';
               const matchingSetplays = lastPart ? setplayList.filter(sp => sp.finisher && (lastPart.includes(sp.finisher) || sp.finisher.includes(lastPart))) : [];
