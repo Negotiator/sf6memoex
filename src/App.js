@@ -152,14 +152,35 @@ export default function App() {
   const analyzeWinRateText = async (text) => {
     if (!text) return;
     setIsAiProcessing(true);
-    const prompt = `以下の戦績テキストから、キャラ名、試合数、勝率を抽出してJSONのみ出力してください。書式: {"キャラ名": {"matches": 数値, "rate": 数値}} 入力: ${text}`;
+    // プロンプトをより厳格に
+    const prompt = `
+      ストリートファイター6の公式サイト（バックラーズブートキャンプ）からコピーされたテキストを解析してください。
+      各キャラクター名、試合数、勝率を抽出し、以下のJSON形式のみを出力してください。
+      解説やMarkdownタグは一切不要です。
+      
+      フォーマット例:
+      {"RYU": {"matches": 100, "rate": 55.5}, "ALL": {"matches": 1000, "rate": 50.2}}
+      
+      入力テキスト:
+      ${text}
+    `;
+
     try {
       const result = await model.generateContent(prompt);
       const responseText = result.response.text();
-      const cleanJson = JSON.parse(responseText.replace(/```json|```/g, "").trim());
+      
+      // JSON部分だけを抽出する正規表現
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error("JSON not found");
+      
+      const cleanJson = JSON.parse(jsonMatch[0]);
       processWinRates(cleanJson);
-    } catch (e) { alert("AI解析に失敗しました。"); }
-    finally { setIsAiProcessing(false); }
+    } catch (e) { 
+      console.error(e);
+      alert("AI解析に失敗しました。正しいテキストを貼り付けてください。"); 
+    } finally { 
+      setIsAiProcessing(false); 
+    }
   };
 
   const generateAdvice = useCallback(async () => {
