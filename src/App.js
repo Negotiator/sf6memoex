@@ -13,8 +13,13 @@ const CHARACTERS = [
   { name: 'ラシード', id: 'rashid' }, { name: 'A.K.I.', id: 'aki' }, { name: 'エド', id: 'ed' },
   { name: '豪鬼', id: 'akuma' }, { name: 'ベガ', id: 'm-bison' }, { name: 'テリー', id: 'terry' },
   { name: '舞', id: 'mai' }, { name: 'エレナ', id: 'elena' }, { name: 'サガット', id: 'sagat' },
-  { name: 'C.ヴァイパー', id: 'crimson-viper' }, { name: 'アレックス', id: 'alex' }, { name: 'イングリット', id: 'ingrid' }
+  { name: 'C.ヴァイパー', id: 'crimson-viper' }, { name: 'アレックス', id: 'alex' }, { name: 'イングリット', id: 'ingrid' },
+  { name: 'ヤスミン', id: 'yasmine' }, { name: 'アルジュン', id: 'arjun' }
 ].sort((a, b) => a.id === 'all' ? -1 : b.id === 'all' ? 1 : a.name.localeCompare(b.name, 'ja'));
+
+// 公式サイト（streetfighter.com）の画像フォルダ名がアプリ内idと異なるキャラの対応表
+const IMG_SLUG = { 'akuma': 'gouki_akuma', 'chun-li': 'chunli', 'crimson-viper': 'cviper', 'dee-jay': 'deejay', 'e-honda': 'ehonda', 'm-bison': 'vega_mbison' };
+const charImg = (id) => { const s = IMG_SLUG[id] || id; return `https://www.streetfighter.com/6/assets/images/character/${s}/${s}.png`; };
 
 const NAME_MAP = {
   "ALL": "ALL", "GOUKI": "豪鬼", "AKUMA": "豪鬼", "C.VIPER": "C.ヴァイパー", "C. VIPER": "C.ヴァイパー",
@@ -23,7 +28,7 @@ const NAME_MAP = {
   "BLANKA": "ブランカ", "DHALSIM": "ダルシム", "DEE JAY": "ディージェイ", "MANON": "マノン", 
   "MARISA": "マリーザ", "JP": "JP", "ZANGIEF": "ザンギエフ", "LILY": "リリー", "CAMMY": "キャミィ", 
   "RASHID": "ラシード", "A.K.I.": "A.K.I.", "ED": "エド", "VEGA": "ベガ", "M. BISON": "ベガ", 
-  "TERRY": "テリー", "MAI": "舞", "ELENA": "エレナ", "SAGAT": "サガット", "ALEX": "アレックス", "INGRID": "イングリット"
+  "TERRY": "テリー", "MAI": "舞", "ELENA": "エレナ", "SAGAT": "サガット", "ALEX": "アレックス", "INGRID": "イングリット", "YASMINE": "ヤスミン", "ARJUN": "アルジュン"
 };
 
 const COMMON_CMDS = ['5', '2', '6', '4', '8', '236', '214', '623', '41236', '63214'];
@@ -343,7 +348,7 @@ export default function App() {
         {CHARACTERS.map(c => (
           <div key={c.id} id={`char-${c.id}`} onClick={() => setSelectedChar(c)} style={{...charItemStyle, opacity: selectedChar.id === c.id ? 1 : 0.4}}>
             <div style={{...iconBox, border: selectedChar.id === c.id ? '2px solid #0ff' : '1px solid #444', background: c.id === 'all' ? '#000' : '#111'}}>
-              {c.id === 'all' ? <div style={{color: '#f80', fontWeight: 'bold', fontSize: '12px'}}>ALL</div> : <img src={`/${c.id}.png`} alt="" style={{width:'100%', height:'100%', objectFit:'cover'}} onError={(e) => { e.target.style.display='none'; e.target.parentElement.innerHTML=c.name[0] }} />}
+              {c.id === 'all' ? <div style={{color: '#f80', fontWeight: 'bold', fontSize: '12px'}}>ALL</div> : <img src={charImg(c.id)} alt="" style={{width:'100%', height:'100%', objectFit:'cover'}} onError={(e) => { e.target.style.display='none'; e.target.parentElement.innerHTML=c.name[0] }} />}
             </div>
             <div style={{fontSize:'8px', color: selectedChar.id === c.id ? '#0ff' : '#888'}}>{c.name}</div>
           </div>
