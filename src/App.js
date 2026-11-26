@@ -40,11 +40,9 @@ const LOCATIONS = ['中央', '画面端', 'どこでも'];
 
 const TABS = [
   { id: 'home', label: 'ホーム', icon: '🏠' },
-  { id: 'dosdb', label: '攻略DB', icon: '📚' },
+  { id: 'dosdb', label: 'コンボ・セットプレイ', icon: '⚡' },
   { id: 'strategy', label: '対策', icon: '🧠' },
-  { id: 'myCombo', label: 'コンボ', icon: '💎' },
-  { id: 'setplay', label: '連携', icon: '⚡' },
-  { id: 'badHabits', label: '悪癖', icon: '🚫' },
+  { id: 'badHabits', label: '反省', icon: '📝' },
   { id: 'replay', label: 'リプレイ', icon: '📹' },
   { id: 'training', label: 'トレモ', icon: '🛠️' },
   { id: 'battle', label: '実戦', icon: '⚔️' },
@@ -256,6 +254,158 @@ function DosDbView() {
         </div>
       ))}
       {rows.length > 0 && filtered.length === 0 && <div style={{ color: '#888', fontSize: '12px' }}>該当データなし</div>}
+    </div>
+  );
+}
+
+function CompactDashboard() {
+  const [status, setStatus] = useState(null);
+  const [matchups, setMatchups] = useState([]);
+  const [focus, setFocus] = useState('');
+  useEffect(() => {
+    (async () => {
+      try {
+        const [sRows, mRows, rRows] = await Promise.all([
+          fetchSheetRows(SHEET_IDS.dash, 'status'),
+          fetchSheetRows(SHEET_IDS.dash, 'matchups'),
+          fetchSheetRows(SHEET_IDS.reflection),
+        ]);
+        const st = {};
+        sRows.forEach(r => { if (r[0] && r[1] && r[0].f) st[r[0].f] = r[1]; });
+        setStatus(st);
+        setMatchups(mRows.filter(r => r[0] && r[0].f).map(r => ({ id: r[0].f, name: r[1].f, matches: Number(r[2].v), rate: Number(r[3].v) })));
+        const valid = rRows.filter(r => r[0] && r[0].f);
+        if (valid.length) { const last = valid[valid.length - 1]; setFocus(last[6] ? last[6].f : ''); }
+      } catch (e) { /* 固定表示は失敗しても静かにする */ }
+    })();
+  }, []);
+  if (!status || !status['現在MR']) return null;
+  const curMR = Number(status['現在MR'].v);
+  const goalMR = status['目標MR'] ? Number(status['目標MR'].v) : 1800;
+  const weak5 = [...matchups].filter(m => m.matches >= 15).sort((a, b) => a.rate - b.rate).slice(0, 5);
+  return (
+    <div style={{ background: '#0a1a1a', border: '1px solid #0ff', borderRadius: '8px', padding: '8px 10px', marginBottom: '10px' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: '11px', color: '#0ff' }}>MR</span>
+        <span style={{ fontSize: '22px', fontWeight: 'bold', color: '#fff' }}>{curMR}</span>
+        <span style={{ fontSize: '11px', color: '#fc0' }}>あと {goalMR - curMR}</span>
+        <span style={{ fontSize: '11px', color: '#aaa' }}>Act14 {status['Act14勝率'] ? status['Act14勝率'].f : '--'}%（{status['Act14対戦数'] ? status['Act14対戦数'].f : '--'}戦）</span>
+        {weak5.length > 0 && <span style={{ fontSize: '10px', color: '#f88' }}>苦手: {weak5.map(m => `${m.name} ${m.rate.toFixed(1)}%`).join(' / ')}</span>}
+      </div>
+      {focus && <div style={{ fontSize: '11px', color: '#fc0', marginTop: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>🎯 {focus}</div>}
+    </div>
+  );
+}
+
+function ReflectionView() {
+  const [rows, setRows] = useState([]);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetchSheetRows(SHEET_IDS.reflection);
+        const valid = r.filter(x => x[0] && x[0].f).map(x => ({ date: x[0].f, mr: x[1] ? x[1].f : '', rate: x[2] ? x[2].f : '', matches: x[3] ? x[3].f : '', text: x[4] ? x[4].f : '', good: x[5] ? x[5].f : '', focus: x[6] ? x[6].f : '' }));
+        setRows(valid.reverse());
+      } catch (e) { setError('データ取得に失敗しました'); }
+    })();
+  }, []);
+  return (
+    <div>
+      <div style={dashTitle}>📝 反省ログ（蓄積）</div>
+      {error && <div style={{ color: '#f88', fontSize: '12px' }}>{error}</div>}
+      {rows.length === 0 && !error && <div style={{ color: '#888', fontSize: '12px' }}>読み込み中...</div>}
+      {rows.map((r, i) => (
+        <div key={i} style={{ ...dashCard, borderLeft: '4px solid #fc0' }}>
+          <div style={{ display: 'flex', gap: '8px', fontSize: '11px', color: '#888', marginBottom: '5px' }}>
+            <span style={{ color: '#fff', fontWeight: 'bold' }}>{r.date}</span>
+            {r.mr && <span>MR {r.mr}</span>}
+            {r.rate && <span>Act14 {r.rate}%</span>}
+            {r.matches && <span>{r.matches}戦</span>}
+          </div>
+          {r.text && <div style={{ fontSize: '12px', color: '#ccc', whiteSpace: 'pre-wrap', marginBottom: '4px' }}>{r.text}</div>}
+          {r.good && <div style={{ fontSize: '12px', color: '#9c9', whiteSpace: 'pre-wrap', marginBottom: '4px' }}>良かった点：{r.good}</div>}
+          {r.focus && <div style={{ fontSize: '12px', color: '#fc0' }}>意識ポイント：{r.focus}</div>}
+        </div>
+      ))}
+      <div style={{ fontSize: '10px', color: '#666' }}>※毎晩0:00の反省で自動で蓄積されます</div>
+    </div>
+  );
+}
+
+function StrategyRefPanel({ charId, charName }) {
+  const [mu, setMu] = useState(null);
+  const [related, setRelated] = useState([]);
+  useEffect(() => {
+    (async () => {
+      try {
+        const [mRows, dRows] = await Promise.all([
+          fetchSheetRows(SHEET_IDS.dash, 'matchups'),
+          fetchSheetRows(SHEET_IDS.dos, 'DB_ラシード攻略'),
+        ]);
+        const found = mRows.find(r => r[0] && r[0].f === charId);
+        if (found) setMu({ matches: Number(found[2].v), rate: Number(found[3].v) }); else setMu(null);
+        const rel = dRows.filter(x => x[0] && x[0].f === 'キャラ対策' && ((x[4].f + x[6].f + x[7].f).includes(charName))).map(x => ({ sit: x[4].f, tip: x[6].f, url: x[8].f }));
+        setRelated(rel.slice(0, 3));
+      } catch (e) { /* 静かに失敗 */ }
+    })();
+  }, [charId, charName]);
+  if (charId === 'all') return null;
+  if (!mu && related.length === 0) return null;
+  return (
+    <div style={{ background: '#111', border: '1px solid #333', borderRadius: '8px', padding: '10px', marginBottom: '10px' }}>
+      <div style={{ fontSize: '11px', color: '#0ff', marginBottom: '5px' }}>📊 NEGOSHIちゃん収集データ（Act14）</div>
+      {mu && <div style={{ fontSize: '12px', color: '#ccc', marginBottom: '5px' }}>対{charName}： {mu.matches}戦 / 勝率 <span style={{ color: mu.rate < 45 ? '#f44' : '#0f0', fontWeight: 'bold' }}>{mu.rate.toFixed(2)}%</span></div>}
+      {related.map((r, i) => (
+        <div key={i} style={{ fontSize: '11px', color: '#aaa', marginBottom: '4px' }}>
+          <div style={{ color: '#ddd' }}>{r.sit}</div>
+          <div>💡 {r.tip}</div>
+          {r.url && <a href={r.url} target="_blank" rel="noreferrer" style={{ color: '#6cf', textDecoration: 'none' }}>▶ 動画を見る</a>}
+        </div>
+      ))}
+      <a href="https://docs.google.com/document/d/12y0GDXJjGat02v4zCNmHb4MrGMjae5SByR3eqrkwmp4/edit" target="_blank" rel="noreferrer" style={{ fontSize: '11px', color: '#6cf', textDecoration: 'none' }}>📄 攻略DBドキュメント（対策記事）</a>
+    </div>
+  );
+}
+
+function ReflectionFocusPanel() {
+  const [latest, setLatest] = useState(null);
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetchSheetRows(SHEET_IDS.reflection);
+        const valid = r.filter(x => x[0] && x[0].f);
+        if (valid.length) { const last = valid[valid.length - 1]; setLatest({ date: last[0].f, text: last[4] ? last[4].f : '', focus: last[6] ? last[6].f : '' }); }
+      } catch (e) { /* 静かに失敗 */ }
+    })();
+  }, []);
+  if (!latest || (!latest.focus && !latest.text)) return null;
+  return (
+    <div style={{ background: '#1a1503', border: '1px solid #fc0', borderRadius: '8px', padding: '10px', marginBottom: '12px' }}>
+      <div style={{ fontSize: '11px', color: '#fc0', marginBottom: '4px' }}>🎯 前回の反省から（{latest.date}）</div>
+      {latest.focus && <div style={{ fontSize: '13px', color: '#fff', marginBottom: '3px' }}>{latest.focus}</div>}
+      {latest.text && <div style={{ fontSize: '11px', color: '#bbb', whiteSpace: 'pre-wrap' }}>{latest.text}</div>}
+    </div>
+  );
+}
+
+function StatsRefLine() {
+  const [status, setStatus] = useState(null);
+  useEffect(() => {
+    (async () => {
+      try {
+        const sRows = await fetchSheetRows(SHEET_IDS.dash, 'status');
+        const st = {};
+        sRows.forEach(r => { if (r[0] && r[1] && r[0].f) st[r[0].f] = r[1]; });
+        setStatus(st);
+      } catch (e) { /* 静かに失敗 */ }
+    })();
+  }, []);
+  if (!status || !status['現在MR']) return null;
+  const curMR = Number(status['現在MR'].v);
+  const goalMR = status['目標MR'] ? Number(status['目標MR'].v) : 1800;
+  return (
+    <div style={{ background: '#0a1a1a', border: '1px solid #0ff', borderRadius: '8px', padding: '6px 10px', fontSize: '11px', color: '#ccc' }}>
+      📊 現在MR <span style={{ color: '#fff', fontWeight: 'bold' }}>{curMR}</span>（目標まであと{goalMR - curMR}） / Act14 {status['Act14勝率'] ? status['Act14勝率'].f : '--'}% / 累計 {status['累計勝率'] ? status['累計勝率'].f : '--'}%
     </div>
   );
 }
@@ -576,6 +726,7 @@ export default function App() {
         </div>
 
         </>)}
+        <CompactDashboard />
         <div style={tabGroupStyle}>{TABS.map(t => (<button key={t.id} onClick={() => setActiveTab(t.id)} style={{...tabBtnStyle, color: activeTab === t.id ? '#0ff' : '#666', background: activeTab === t.id ? '#222' : '#000'}}>{t.icon} {t.label}</button>))}</div>
       </div>
 
@@ -586,6 +737,7 @@ export default function App() {
           <DosDbView />
         ) : activeTab === 'replay' ? (
           <div>
+            <StatsRefLine />
             <div style={sectionTitle}>📹 リプレイ・リアルタイムカウンター</div>
             <div style={comboCardStyle}>
               <div style={{display:'flex', gap:'10px', marginBottom:'15px', justifyContent:'center'}}>
@@ -618,6 +770,7 @@ export default function App() {
           </div>
         ) : activeTab === 'training' ? (
           <div>
+            <ReflectionFocusPanel />
             <div style={sectionTitle}>🛠️ トレモ課題 (AI分析優先)</div>
             <div style={{marginBottom:'15px'}}>
               <div style={trainingCard}>
@@ -632,6 +785,7 @@ export default function App() {
           </div>
         ) : activeTab === 'battle' ? (
           <div style={{display:'flex', flexDirection:'column', gap:'10px'}}>
+            <StatsRefLine />
             <button onClick={() => setShowReadingTable(!showReadingTable)} style={{...linkBtn('#fc0'), width:'100%', padding:'10px'}}>{showReadingTable ? '読み合い表を隠す' : '起き攻め読み合い表を表示'}</button>
             {showReadingTable && (
               <div style={{background:'#111', padding:'5px', borderRadius:'8px', overflowX:'auto', border:'1px solid #fc0'}}>
@@ -709,16 +863,14 @@ export default function App() {
             ))}
           </div>
         ) : activeTab === 'badHabits' ? (
-          <div>{habitsList.map((item, idx) => (
-            <div key={idx} style={{...comboCardStyle, borderLeft:'4px solid #f44'}}>
-              <div><label style={{...miniLabel, color:'#f44'}}>NG行動</label><input style={comboInput} value={item.ng || ''} onChange={e => { const newList = [...habitsList]; newList[idx].ng = e.target.value; if(newList[newList.length-1].ng) newList.push({ng:'', solution:''}); updateMyData('badHabits', newList); }} /></div>
-              <div style={{marginTop:'5px'}}><label style={{...miniLabel, color:'#0f0'}}>改善策</label><input style={comboInput} value={item.solution || ''} onChange={e => { const newList = [...habitsList]; newList[idx].solution = e.target.value; updateMyData('badHabits', newList); }} /></div>
-            </div>
-          ))}</div>
+          <ReflectionView />
         ) : activeTab === 'qa' ? (
           // 追加: AIなんでも質問タブの内容
           <div style={{display: 'flex', flexDirection: 'column', gap: '10px', height: '100%'}}>
             <div style={sectionTitle}>🤖 AIになんでも質問</div>
+            <div style={{display:'flex', gap:'6px', flexWrap:'wrap'}}>
+              {DOC_LINKS.map(l => (<a key={l.url} href={l.url} target="_blank" rel="noreferrer" style={{fontSize:'10px', color:'#6cf', border:'1px solid #335', borderRadius:'10px', padding:'3px 8px', textDecoration:'none'}}>📄 {l.label}</a>))}
+            </div>
             <div style={{display: 'flex', gap: '5px'}}>
               <input style={{...comboInput, flex: 1}} value={qaInput} onChange={e => setQaInput(e.target.value)} placeholder="例：ルークのしゃがみ中P対策は？ / 画面端の柔道対策を教えて" />
               <button onClick={askAnyQuestion} style={{...saveBtnStyle, padding: '10px'}}>質問送信</button>
@@ -729,6 +881,7 @@ export default function App() {
           </div>
         ) : (
           <div style={{position:'relative'}}>
+            <StrategyRefPanel charId={selectedChar.id} charName={selectedChar.name} />
             <button onClick={cleanupStrategy} style={cleanBtnStyle} title="重複・不要記号を削除">🧹</button>
             <textarea style={mainTextAreaStyle} value={currentCharData.strategy || ''} onFocus={() => setFocusField({type:'main', field:'strategy'})} onChange={e => updateChar('strategy', e.target.value)} placeholder={`${selectedChar.name}対策...`} />
           </div>
