@@ -418,7 +418,7 @@ export default function App() {
     saveToStorage({ ...data, [selectedChar.id]: { ...charData, [field]: value } });
   }, [data, selectedChar]);
 
-  const generateAdvice  const generateAdvice = useCallback(async () => {
+  const generateAdvice = useCallback(async () => {
     setIsAiProcessing(true);
     const context = `自キャラ: ${myChar.name}, 相手: ${selectedChar.name}, メモ: ${data[selectedChar.id]?.strategy || 'なし'}`;
     try {
