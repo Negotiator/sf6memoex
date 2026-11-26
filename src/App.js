@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { LineChart, Line, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const CHARACTERS = [
@@ -39,6 +39,8 @@ const HIT_TYPES = ['通常', 'パニカン', 'カウンター', '持続', '空�
 const LOCATIONS = ['中央', '画面端', 'どこでも'];
 
 const TABS = [
+  { id: 'home', label: 'ホーム', icon: '🏠' },
+  { id: 'dosdb', label: '攻略DB', icon: '📚' },
   { id: 'strategy', label: '対策', icon: '🧠' },
   { id: 'myCombo', label: 'コンボ', icon: '💎' },
   { id: 'setplay', label: '連携', icon: '⚡' },
@@ -63,13 +65,208 @@ const API_KEY = process.env.REACT_APP_GEMINI_API_KEY || "YOUR_KEY_HERE";
 const genAI = new GoogleGenerativeAI(API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
+// ===== Google Sheets 連携（NEGOSHIちゃんが更新するデータの表示） =====
+const SHEET_IDS = {
+  dash: '1Wlosrs3QKreA7xeyYI-mAJUNlkXWEMprJmwW0HI4_YI',
+  reflection: '19Lms9pv6Y8A8BMbH_RAv6cwPR_Gcytmiz5tA9u5sm_8',
+  dos: '1CnWfVzAMxZnZ6dAYmUup3dPdghoLG7_maBQkE1ScKwU',
+};
+const DOC_LINKS = [
+  { label: 'Buckler プロフィール（PLAY）', url: 'https://www.streetfighter.com/6/buckler/ja-jp/profile/1386489874/play' },
+  { label: '反省ログ（シート）', url: 'https://docs.google.com/spreadsheets/d/19Lms9pv6Y8A8BMbH_RAv6cwPR_Gcytmiz5tA9u5sm_8/edit' },
+  { label: 'doskonnbu攻略DB（シート）', url: 'https://docs.google.com/spreadsheets/d/1CnWfVzAMxZnZ6dAYmUup3dPdghoLG7_maBQkE1ScKwU/edit' },
+  { label: 'AI情報収集ハブ', url: 'https://docs.google.com/spreadsheets/d/1BTPyYYoeYncUQoLH-DOZxmF_ic-rmZ3P4S12aS_x5Tw/edit' },
+  { label: 'スト6_ラシード攻略DB（ドキュメント）', url: 'https://docs.google.com/document/d/12y0GDXJjGat02v4zCNmHb4MrGMjae5SByR3eqrkwmp4/edit' },
+  { label: 'アケコン_パーツ改造DB（ドキュメント）', url: 'https://docs.google.com/document/d/1P1JBrb8P30drAEyckhUI6vQwjXmhh4meoOBVwPl36ZU/edit' },
+];
+
+async function fetchSheetRows(id, sheetName) {
+  const url = `https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=out:json${sheetName ? `&sheet=${encodeURIComponent(sheetName)}` : ''}`;
+  const res = await fetch(url);
+  const text = await res.text();
+  const json = JSON.parse(text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1));
+  return (json.table.rows || []).map(r => (r.c || []).map(c => (c ? { v: c.v, f: c.f !== undefined ? String(c.f) : (c.v !== null && c.v !== undefined ? String(c.v) : '') } : { v: null, f: '' })));
+}
+
+const dashCard = { background: '#111', border: '1px solid #333', borderRadius: '8px', padding: '12px', marginBottom: '12px' };
+const dashTitle = { fontSize: '13px', fontWeight: 'bold', color: '#0ff', marginBottom: '8px' };
+
+function HomeDashboard({ onSelectChar }) {
+  const [status, setStatus] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [matchups, setMatchups] = useState([]);
+  const [ach, setAch] = useState([]);
+  const [reflection, setReflection] = useState(null);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [sRows, hRows, mRows, aRows, rRows] = await Promise.all([
+          fetchSheetRows(SHEET_IDS.dash, 'status'),
+          fetchSheetRows(SHEET_IDS.dash, 'mr_history'),
+          fetchSheetRows(SHEET_IDS.dash, 'matchups'),
+          fetchSheetRows(SHEET_IDS.dash, 'achievements'),
+          fetchSheetRows(SHEET_IDS.reflection),
+        ]);
+        const st = {};
+        sRows.forEach(r => { if (r[0] && r[1] && r[0].f) st[r[0].f] = r[1]; });
+        setStatus(st);
+        setHistory(hRows.filter(r => r[0] && r[0].f && r[1] && r[1].v !== null && r[1].v !== undefined).map(r => ({ date: r[0].f.slice(5), mr: Number(r[1].v) })));
+        setMatchups(mRows.filter(r => r[0] && r[0].f).map(r => ({ id: r[0].f, name: r[1].f, matches: Number(r[2].v), rate: Number(r[3].v) })));
+        setAch(aRows.filter(r => r[0] && r[0].f));
+        const valid = rRows.filter(r => r[0] && r[0].f);
+        if (valid.length) {
+          const last = valid[valid.length - 1];
+          setReflection({ date: last[0].f, mr: last[1] ? last[1].f : '', text: last[4] ? last[4].f : '', good: last[5] ? last[5].f : '', focus: last[6] ? last[6].f : '' });
+        }
+      } catch (e) { setError('データ取得に失敗しました。下のリンクから直接確認してください。'); }
+    })();
+  }, []);
+
+  const weak5 = [...matchups].filter(m => m.matches >= 15).sort((a, b) => a.rate - b.rate).slice(0, 5);
+  const curMR = status && status['現在MR'] ? Number(status['現在MR'].v) : null;
+  const goalMR = status && status['目標MR'] ? Number(status['目標MR'].v) : 1800;
+
+  return (
+    <div>
+      <div style={dashCard}>
+        <div style={dashTitle}>🎯 MR（ラシード）</div>
+        {error && <div style={{ color: '#f88', fontSize: '12px' }}>{error}</div>}
+        {!status && !error && <div style={{ color: '#888', fontSize: '12px' }}>読み込み中...</div>}
+        {status && (
+          <div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px' }}>
+              <span style={{ fontSize: '34px', fontWeight: 'bold', color: '#fff' }}>{curMR}</span>
+              <span style={{ fontSize: '13px', color: '#fc0' }}>目標 {goalMR} まで あと {curMR !== null ? goalMR - curMR : '--'}</span>
+              <span style={{ fontSize: '11px', color: '#888' }}>最高 {status['Act14最高MR'] ? status['Act14最高MR'].f : '--'}</span>
+            </div>
+            {history.length > 1 && (
+              <div style={{ height: '110px', marginTop: '8px' }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={history}>
+                    <XAxis dataKey="date" tick={{ fill: '#888', fontSize: 10 }} />
+                    <YAxis domain={['dataMin - 30', 'dataMax + 30']} tick={{ fill: '#888', fontSize: 10 }} width={45} />
+                    <Tooltip contentStyle={{ background: '#222', border: '1px solid #444', fontSize: '11px' }} />
+                    <Line type="monotone" dataKey="mr" stroke="#0ff" dot={{ r: 3 }} isAnimationActive={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+            <div style={{ fontSize: '11px', color: '#888', marginTop: '6px' }}>
+              Act14: {status['Act14対戦数'] ? status['Act14対戦数'].f : '--'}戦 / {status['Act14勝率'] ? status['Act14勝率'].f : '--'}%　
+              Act13: {status['Act13対戦数'] ? status['Act13対戦数'].f : '--'}戦 / {status['Act13勝率'] ? status['Act13勝率'].f : '--'}%　
+              累計: {status['累計対戦数'] ? status['累計対戦数'].f : '--'}戦 / {status['累計勝率'] ? status['累計勝率'].f : '--'}%
+            </div>
+            <div style={{ fontSize: '10px', color: '#666', marginTop: '2px' }}>MR確認日: {status['MR確認日'] ? status['MR確認日'].f : '--'}（勝率データ: {status['勝率データ基準'] ? status['勝率データ基準'].f : '--'}） ※毎晩のチェックインで更新</div>
+          </div>
+        )}
+      </div>
+
+      {weak5.length > 0 && (
+        <div style={dashCard}>
+          <div style={dashTitle}>⚠️ 苦手キャラ TOP5（Act14・15戦以上）</div>
+          {weak5.map(m => (
+            <div key={m.id} onClick={() => onSelectChar(m.id)} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '6px 0', borderBottom: '1px solid #222', cursor: 'pointer' }}>
+              <img src={charImg(m.id)} alt="" style={{ width: '34px', height: '34px', objectFit: 'cover', borderRadius: '4px', background: '#222' }} onError={(e) => { e.target.style.display = 'none'; }} />
+              <div style={{ flex: 1, fontSize: '13px', color: '#fff' }}>{m.name}</div>
+              <div style={{ fontSize: '12px', color: '#aaa' }}>{m.matches}戦</div>
+              <div style={{ fontSize: '14px', fontWeight: 'bold', color: m.rate < 40 ? '#f44' : '#fc0' }}>{m.rate.toFixed(2)}%</div>
+            </div>
+          ))}
+          <div style={{ fontSize: '10px', color: '#666', marginTop: '4px' }}>タップでそのキャラの対策タブへ</div>
+        </div>
+      )}
+
+      {reflection && (
+        <div style={dashCard}>
+          <div style={dashTitle}>📝 最新の反省（{reflection.date}）</div>
+          {reflection.focus && <div style={{ fontSize: '13px', color: '#fc0', marginBottom: '6px' }}>意識ポイント：{reflection.focus}</div>}
+          {reflection.text && <div style={{ fontSize: '12px', color: '#ccc', whiteSpace: 'pre-wrap', marginBottom: '4px' }}>{reflection.text}</div>}
+          {reflection.good && <div style={{ fontSize: '12px', color: '#9c9', whiteSpace: 'pre-wrap' }}>良かった点：{reflection.good}</div>}
+        </div>
+      )}
+
+      {ach.length > 0 && (
+        <div style={dashCard}>
+          <div style={dashTitle}>📊 実績（過去100戦平均）</div>
+          {['ドライブゲージ', 'SAゲージ'].map(g => (
+            <div key={g} style={{ marginBottom: '6px' }}>
+              <div style={{ fontSize: '11px', color: '#888' }}>{g}</div>
+              {ach.filter(r => r[0].f === g).map((r, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#ccc', padding: '2px 0' }}>
+                  <span>{r[1].f}</span><span style={{ color: '#fff' }}>{r[2].f}</span>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={dashCard}>
+        <div style={dashTitle}>🔗 データ・リンク</div>
+        {DOC_LINKS.map(l => (
+          <a key={l.url} href={l.url} target="_blank" rel="noreferrer" style={{ display: 'block', fontSize: '12px', color: '#6cf', padding: '5px 0', borderBottom: '1px solid #222', textDecoration: 'none' }}>{l.label}</a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DosDbView() {
+  const [rows, setRows] = useState([]);
+  const [q, setQ] = useState('');
+  const [cat, setCat] = useState('すべて');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetchSheetRows(SHEET_IDS.dos, 'DB_ラシード攻略');
+        setRows(r.filter(x => x[0] && x[0].f).map(x => ({ cat: x[0].f, date: x[1].f, pos: x[2].f, res: x[3].f, sit: x[4].f, recipe: x[5].f, tip: x[6].f, title: x[7].f, url: x[8].f })));
+      } catch (e) { setError('データ取得に失敗しました'); }
+    })();
+  }, []);
+
+  const cats = ['すべて', ...Array.from(new Set(rows.map(r => r.cat)))];
+  const filtered = rows.filter(r => (cat === 'すべて' || r.cat === cat) && (!q || (r.sit + r.recipe + r.tip + r.title).includes(q)));
+
+  return (
+    <div>
+      <div style={dashTitle}>📚 ラシード攻略DB（doskonnbu・{filtered.length}件）</div>
+      {error && <div style={{ color: '#f88', fontSize: '12px', marginBottom: '8px' }}>{error}</div>}
+      <input value={q} onChange={e => setQ(e.target.value)} placeholder="キーワード検索（状況・レシピ・要点）" style={{ width: '100%', boxSizing: 'border-box', background: '#111', border: '1px solid #444', borderRadius: '6px', color: '#fff', padding: '8px', fontSize: '13px', marginBottom: '8px' }} />
+      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '10px' }}>
+        {cats.map(c => (
+          <button key={c} onClick={() => setCat(c)} style={{ background: cat === c ? '#0ff' : '#222', color: cat === c ? '#000' : '#aaa', border: '1px solid #444', borderRadius: '12px', padding: '4px 10px', fontSize: '11px', cursor: 'pointer' }}>{c}</button>
+        ))}
+      </div>
+      {filtered.map((r, i) => (
+        <div key={i} style={dashCard}>
+          <div style={{ display: 'flex', gap: '6px', fontSize: '10px', marginBottom: '5px', flexWrap: 'wrap' }}>
+            <span style={{ background: '#300', color: '#f99', borderRadius: '4px', padding: '2px 6px' }}>{r.cat}</span>
+            <span style={{ background: '#222', color: '#aaa', borderRadius: '4px', padding: '2px 6px' }}>{r.pos}</span>
+            <span style={{ background: '#222', color: '#aaa', borderRadius: '4px', padding: '2px 6px' }}>{r.res}</span>
+            <span style={{ color: '#666' }}>{r.date}</span>
+          </div>
+          <div style={{ fontSize: '13px', color: '#fff', fontWeight: 'bold', marginBottom: '4px' }}>{r.sit}</div>
+          <div style={{ fontSize: '12px', color: '#ccc', whiteSpace: 'pre-wrap', marginBottom: '4px' }}>{r.recipe}</div>
+          <div style={{ fontSize: '12px', color: '#9c9', whiteSpace: 'pre-wrap', marginBottom: '6px' }}>💡 {r.tip}</div>
+          {r.url && <a href={r.url} target="_blank" rel="noreferrer" style={{ fontSize: '11px', color: '#6cf', textDecoration: 'none' }}>▶ 動画を見る（{r.title}）</a>}
+        </div>
+      ))}
+      {rows.length > 0 && filtered.length === 0 && <div style={{ color: '#888', fontSize: '12px' }}>該当データなし</div>}
+    </div>
+  );
+}
+
 export default function App() {
   const [selectedChar, setSelectedChar] = useState(CHARACTERS[0]);
   const [myChar, setMyChar] = useState(CHARACTERS[1]);
   const [controlType, setControlType] = useState('C');
   const [playerName, setPlayerName] = useState('');
   const [data, setData] = useState({});
-  const [activeTab, setActiveTab] = useState('strategy');
+  const [activeTab, setActiveTab] = useState('home');
   const [newWinRate, setNewWinRate] = useState('');
   const [focusField, setFocusField] = useState(null);
   const [isAiProcessing, setIsAiProcessing] = useState(false);
@@ -357,6 +554,7 @@ export default function App() {
 
       {/* 追加: スクロールせずに固定表示させる上部エリア */}
       <div style={{ padding: '10px 10px 0 10px', flexShrink: 0, background: '#050505' }}>
+        {!['home', 'dosdb'].includes(activeTab) && (<>
         <div style={aiPanel}>
            <button onClick={() => analyzeWinRateText(prompt("公式サイトの戦績を貼り付け"))} style={aiExecBtn}>📋 戦績同期</button>
         </div>
@@ -377,11 +575,16 @@ export default function App() {
           </div>
         </div>
 
+        </>)}
         <div style={tabGroupStyle}>{TABS.map(t => (<button key={t.id} onClick={() => setActiveTab(t.id)} style={{...tabBtnStyle, color: activeTab === t.id ? '#0ff' : '#666', background: activeTab === t.id ? '#222' : '#000'}}>{t.icon} {t.label}</button>))}</div>
       </div>
 
       <main style={{flex:1, padding:'10px', overflowY:'auto'}}>
-        {activeTab === 'replay' ? (
+        {activeTab === 'home' ? (
+          <HomeDashboard onSelectChar={(id) => { const c = CHARACTERS.find(x => x.id === id); if (c) { setSelectedChar(c); setActiveTab('strategy'); } }} />
+        ) : activeTab === 'dosdb' ? (
+          <DosDbView />
+        ) : activeTab === 'replay' ? (
           <div>
             <div style={sectionTitle}>📹 リプレイ・リアルタイムカウンター</div>
             <div style={comboCardStyle}>
