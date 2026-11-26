@@ -22,7 +22,6 @@ const IMG_SLUG = { 'akuma': 'gouki_akuma', 'chun-li': 'chunli', 'crimson-viper':
 const charImg = (id) => { const s = IMG_SLUG[id] || id; return `https://www.streetfighter.com/6/assets/images/character/${s}/${s}.png`; };
 
 
-const LOCATIONS = ['中央', '画面端', 'どこでも'];
 
 const TABS = [
   { id: 'home', label: 'ホーム', icon: '🏠' },
@@ -389,7 +388,6 @@ export default function App() {
   const [battleResult, setBattleResult] = useState('Win');
   
   // 追加: 連携表示・QA機能用ステート
-  const [comboSetplaysVisible, setComboSetplaysVisible] = useState({});
   const [qaInput, setQaInput] = useState("");
   const [qaResult, setQaResult] = useState("");
 
@@ -682,7 +680,7 @@ export default function App() {
             )}
             <div style={battleSection}><div style={battleHeader}>🧠 {selectedChar.name} 対策</div><div style={{whiteSpace:'pre-wrap', fontSize:'12px', color:'#eee'}}>{currentCharData.strategy || '未入力'}</div></div>
           </div>
-        ) : activeTab === 'badHabits' ? (        ) : activeTab === 'badHabits' ? (
+        ) : activeTab === 'badHabits' ? (
           <ReflectionView />
         ) : activeTab === 'qa' ? (
           // 追加: AIなんでも質問タブの内容
@@ -703,7 +701,7 @@ export default function App() {
           <div style={{position:'relative'}}>
             <StrategyRefPanel charId={selectedChar.id} charName={selectedChar.name} />
             <button onClick={cleanupStrategy} style={cleanBtnStyle} title="重複・不要記号を削除">🧹</button>
-            <textarea style={mainTextAreaStyle} value={currentCharData.strategy || ''}} onChange={e => updateChar('strategy', e.target.value)} placeholder={`${selectedChar.name}対策...`} />
+            <textarea style={mainTextAreaStyle} value={currentCharData.strategy || ''} onChange={e => updateChar('strategy', e.target.value)} placeholder={`${selectedChar.name}対策...`} />
           </div>
         )}
       </main>
@@ -742,6 +740,5 @@ const controlToggleStyle = { display:'flex', background:'#000', borderRadius:'4p
 const toggleBtn = { border:'none', fontSize:'9px', padding:'2px 6px' };
 const battleSection = { background:'#111', borderRadius:'8px', padding:'10px', border:'1px solid #222', marginBottom:'10px' };
 const battleHeader = { fontSize:'11px', fontWeight:'bold', color:'#0ff', marginBottom:'8px', borderBottom:'1px solid #333' };
-const battleItem = { fontSize:'12px', marginBottom:'6px' };
 const sectionTitle = { fontSize:'11px', color:'#fc0', marginBottom:'8px', marginTop:'5px' };
 const trainingCard = { background:'#1a1a1a', padding:'8px', borderRadius:'6px', marginBottom:'8px', borderLeft:'3px solid #f44' };
